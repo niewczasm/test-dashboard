@@ -357,22 +357,32 @@ export default function DashboardPage() {
                     </td>
                     <td className="overflow-hidden px-4 py-2">
                       {t.ticket ? (
-                        t.ticket.url ? (
-                          <a
-                            href={t.ticket.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="block truncate underline"
-                            style={{ color: "var(--series-1)" }}
-                            title={t.ticket.key}
-                          >
-                            {t.ticket.key}
-                          </a>
-                        ) : (
-                          <span className="block truncate" title={t.ticket.key}>
-                            {t.ticket.key}
-                          </span>
-                        )
+                        <div className="flex items-center gap-1 overflow-hidden">
+                          {t.ticket.jiraStatusCategory === "done" && (
+                            <span
+                              className="shrink-0"
+                              title={`Ticket is ${t.ticket.jiraStatus ?? "closed"} but this test is still failing`}
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                          {t.ticket.url ? (
+                            <a
+                              href={t.ticket.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block truncate underline"
+                              style={{ color: "var(--series-1)" }}
+                              title={t.ticket.key}
+                            >
+                              {t.ticket.key}
+                            </a>
+                          ) : (
+                            <span className="block truncate" title={t.ticket.key}>
+                              {t.ticket.key}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ color: "var(--text-muted)" }}>—</span>
                       )}

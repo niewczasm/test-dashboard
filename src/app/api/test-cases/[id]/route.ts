@@ -16,6 +16,10 @@ interface TestCaseDetailRow {
   ticketNote: string | null;
   ticketCreatedAt: string | null;
   ticketUpdatedAt: string | null;
+  ticketJiraStatus: string | null;
+  ticketJiraStatusCategory: string | null;
+  ticketJiraCheckedAt: string | null;
+  ticketJiraError: string | null;
 }
 
 interface TagRow {
@@ -52,7 +56,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          tc.id, tc.jobId, tc.className, tc.testName, tc.firstSeen, tc.lastSeen,
          j.name AS jobName, j.jenkinsPath,
          tk.id AS ticketId, tk.key AS ticketKey, tk.url AS ticketUrl, tk.note AS ticketNote,
-         tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt
+         tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
+         tk.jiraStatus AS ticketJiraStatus, tk.jiraStatusCategory AS ticketJiraStatusCategory,
+         tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError
        FROM TestCase tc
        JOIN Job j ON j.id = tc.jobId
        LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
@@ -104,6 +110,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           note: row.ticketNote,
           createdAt: row.ticketCreatedAt,
           updatedAt: row.ticketUpdatedAt,
+          jiraStatus: row.ticketJiraStatus,
+          jiraStatusCategory: row.ticketJiraStatusCategory,
+          jiraCheckedAt: row.ticketJiraCheckedAt,
+          jiraError: row.ticketJiraError,
         }
       : null,
     tags: tags.map((t) => ({ tag: t })),

@@ -11,6 +11,8 @@ interface FailureRow {
   buildTimestamp: string;
   ticketKey: string | null;
   ticketUrl: string | null;
+  ticketJiraStatus: string | null;
+  ticketJiraStatusCategory: string | null;
 }
 
 interface TagRow {
@@ -42,7 +44,9 @@ export async function GET(req: NextRequest) {
          j.name AS jobName,
          b.timestamp AS buildTimestamp,
          tk.key AS ticketKey,
-         tk.url AS ticketUrl
+         tk.url AS ticketUrl,
+         tk.jiraStatus AS ticketJiraStatus,
+         tk.jiraStatusCategory AS ticketJiraStatusCategory
        FROM TestFailure tf
        JOIN Build b ON b.id = tf.buildId
        JOIN TestCase tc ON tc.id = tf.testCaseId
@@ -81,7 +85,12 @@ export async function GET(req: NextRequest) {
       jobName: string;
       failureCount: number;
       lastFailedAt: string;
-      ticket: { key: string; url: string | null } | null;
+      ticket: {
+        key: string;
+        url: string | null;
+        jiraStatus: string | null;
+        jiraStatusCategory: string | null;
+      } | null;
       tags: { id: string; name: string; color: string }[];
     }
   >();
@@ -104,7 +113,14 @@ export async function GET(req: NextRequest) {
         jobName: f.jobName,
         failureCount: 1,
         lastFailedAt: f.buildTimestamp,
-        ticket: f.ticketKey ? { key: f.ticketKey, url: f.ticketUrl } : null,
+        ticket: f.ticketKey
+          ? {
+              key: f.ticketKey,
+              url: f.ticketUrl,
+              jiraStatus: f.ticketJiraStatus,
+              jiraStatusCategory: f.ticketJiraStatusCategory,
+            }
+          : null,
         tags: tagsByTestCase.get(f.testCaseId) ?? [],
       });
     }

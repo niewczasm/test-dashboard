@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { TagDto, TestCaseDetailDto } from "@/types/api";
 import { TagBadge } from "@/components/TagBadge";
 import { shortenTestIdentifier } from "@/lib/testName";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
 const STATUS_COLOR: Record<string, string> = {
   FAILED: "var(--status-critical)",
@@ -22,6 +22,7 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
   const [ticketUrl, setTicketUrl] = useState("");
   const [ticketNote, setTicketNote] = useState("");
   const [savingTicket, setSavingTicket] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
 
   function load() {
     fetch(`/api/test-cases/${id}`)
@@ -62,6 +63,21 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
     setTicketUrl("");
     setTicketNote("");
     load();
+  }
+
+  async function refreshTicketStatus() {
+    if (!testCase?.ticket) return;
+    setRefreshingStatus(true);
+    try {
+      const res = await fetch(`/api/tickets/${testCase.ticket.id}/refresh`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error ?? "Failed to refresh ticket status");
+      }
+      load();
+    } finally {
+      setRefreshingStatus(false);
+    }
   }
 
   async function addTag(tagId: string) {
@@ -116,6 +132,51 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
           <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
             JIRA ticket
           </h2>
+          {testCase.ticket && (
+            <div className="mb-3 flex flex-col gap-1 rounded-md border p-2 text-xs" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center gap-2">
+                {testCase.ticket.jiraStatusCategory === "done" && (
+                  <span title="This test is still failing despite the ticket being closed">⚠️</span>
+                )}
+                {testCase.ticket.jiraStatus ? (
+                  <span
+                    className="rounded px-1.5 py-0.5 font-semibold"
+                    style={{
+                      background:
+                        testCase.ticket.jiraStatusCategory === "done"
+                          ? "var(--status-warning)"
+                          : "var(--gridline)",
+                      color:
+                        testCase.ticket.jiraStatusCategory === "done" ? "#000" : "var(--text-secondary)",
+                    }}
+                  >
+                    {testCase.ticket.jiraStatus}
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {testCase.ticket.jiraError ? "status unavailable" : "status not checked yet"}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={refreshTicketStatus}
+                  disabled={refreshingStatus}
+                  className="ml-auto underline disabled:opacity-60"
+                  style={{ color: "var(--series-1)" }}
+                >
+                  {refreshingStatus ? "checking…" : "refresh"}
+                </button>
+              </div>
+              {testCase.ticket.jiraCheckedAt && (
+                <span style={{ color: "var(--text-muted)" }}>
+                  checked {formatDistanceToNow(new Date(testCase.ticket.jiraCheckedAt), { addSuffix: true })}
+                </span>
+              )}
+              {testCase.ticket.jiraError && (
+                <span style={{ color: "var(--status-critical)" }}>{testCase.ticket.jiraError}</span>
+              )}
+            </div>
+          )}
           <form onSubmit={saveTicket} className="flex flex-col gap-2">
             <input
               value={ticketKey}
@@ -127,7 +188,7 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
             <input
               value={ticketUrl}
               onChange={(e) => setTicketUrl(e.target.value)}
-              placeholder="ticket link (optional)"
+              placeholder="ticket link (auto-filled from JIRA_URL if left blank)"
               className="rounded-md border px-2 py-1.5 text-sm"
               style={{ borderColor: "var(--border)", background: "var(--page)" }}
             />

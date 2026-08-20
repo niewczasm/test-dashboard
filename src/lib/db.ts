@@ -90,7 +90,11 @@ db.exec(`
     url TEXT,
     note TEXT,
     createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
+    updatedAt TEXT NOT NULL,
+    jiraStatus TEXT,
+    jiraStatusCategory TEXT,
+    jiraCheckedAt TEXT,
+    jiraError TEXT
   );
 
   CREATE TABLE IF NOT EXISTS Tag (
@@ -149,6 +153,10 @@ ensureColumn("TestFailure", "stderr", "TEXT");
 ensureColumn("Build", "invalid", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("Build", "invalidReason", "TEXT");
 ensureColumn("Build", "invalidAt", "TEXT");
+ensureColumn("Ticket", "jiraStatus", "TEXT");
+ensureColumn("Ticket", "jiraStatusCategory", "TEXT");
+ensureColumn("Ticket", "jiraCheckedAt", "TEXT");
+ensureColumn("Ticket", "jiraError", "TEXT");
 
 /** The subset of SQLite bind-parameter types this app actually uses. */
 export type SqlParam = string | number | null;

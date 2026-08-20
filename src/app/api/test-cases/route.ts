@@ -15,6 +15,10 @@ interface TestCaseRow {
   ticketNote: string | null;
   ticketCreatedAt: string | null;
   ticketUpdatedAt: string | null;
+  ticketJiraStatus: string | null;
+  ticketJiraStatusCategory: string | null;
+  ticketJiraCheckedAt: string | null;
+  ticketJiraError: string | null;
   failureCount: number;
 }
 
@@ -62,6 +66,8 @@ export async function GET(req: NextRequest) {
          j.name AS jobName,
          tk.id AS ticketId, tk.key AS ticketKey, tk.url AS ticketUrl, tk.note AS ticketNote,
          tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
+         tk.jiraStatus AS ticketJiraStatus, tk.jiraStatusCategory AS ticketJiraStatusCategory,
+         tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError,
          (SELECT COUNT(*) FROM TestFailure tf JOIN Build b ON b.id = tf.buildId
           WHERE tf.testCaseId = tc.id AND b.invalid = 0) AS failureCount
        FROM TestCase tc
@@ -107,6 +113,10 @@ export async function GET(req: NextRequest) {
           note: r.ticketNote,
           createdAt: r.ticketCreatedAt,
           updatedAt: r.ticketUpdatedAt,
+          jiraStatus: r.ticketJiraStatus,
+          jiraStatusCategory: r.ticketJiraStatusCategory,
+          jiraCheckedAt: r.ticketJiraCheckedAt,
+          jiraError: r.ticketJiraError,
         }
       : null,
     tags: (tagsByTestCase.get(r.id) ?? []).map((t) => ({

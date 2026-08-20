@@ -36,6 +36,10 @@ export interface TicketDto {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+  jiraStatus: string | null;
+  jiraStatusCategory: string | null;
+  jiraCheckedAt: string | null;
+  jiraError: string | null;
 }
 
 export interface TestCaseListDto {
@@ -121,7 +125,7 @@ export interface TopFailingTestDto {
   jobName: string;
   failureCount: number;
   lastFailedAt: string;
-  ticket: { key: string; url: string | null } | null;
+  ticket: { key: string; url: string | null; jiraStatus: string | null; jiraStatusCategory: string | null } | null;
   tags: { id: string; name: string; color: string }[];
 }
 

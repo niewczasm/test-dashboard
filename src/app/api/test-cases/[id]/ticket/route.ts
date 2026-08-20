@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, newId, nowIso } from "@/lib/db";
+import { buildTicketUrl } from "@/lib/jira";
+import { syncTicketStatus } from "@/lib/jiraSync";
 import { z } from "zod";
 
 const ticketSchema = z.object({
@@ -15,7 +17,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const { key, url, note } = parsed.data;
+  const { key, note } = parsed.data;
+  // If the caller didn't paste an explicit link, derive one from JIRA_URL so
+  // the ticket key is still clickable.
+  const url = parsed.data.url || buildTicketUrl(key);
   const now = nowIso();
 
   const ticket = db
@@ -26,9 +31,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
          key = excluded.key, url = excluded.url, note = excluded.note, updatedAt = excluded.updatedAt
        RETURNING *`
     )
-    .get(newId(), testCaseId, key, url || null, note || null, now, now);
+    .get(newId(), testCaseId, key, url, note || null, now, now) as { id: string };
 
-  return NextResponse.json(ticket);
+  // Best-effort — a slow/unreachable JIRA shouldn't block saving the ticket.
+  await syncTicketStatus(ticket.id).catch(() => {});
+
+  const saved = db.prepare("SELECT * FROM Ticket WHERE id = ?").get(ticket.id);
+  return NextResponse.json(saved);
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

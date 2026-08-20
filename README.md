@@ -52,10 +52,21 @@ builds, manual JIRA ticket assignment, and tagging of tests.
    JENKINS_USER="your-username"
    JENKINS_API_TOKEN="jenkins-api-token"
    SYNC_INTERVAL_MINUTES="15"
+
+   JIRA_URL="https://jira.yourcompany.com"
+   JIRA_USER=""
+   JIRA_API_TOKEN=""
    ```
 
    Generate the API token in Jenkins: user profile → *Configure* →
    *API Token* → *Add new Token*.
+
+   `JIRA_URL` is optional but recommended: once set, a ticket key you attach
+   to a test (e.g. `PROJ-123`) auto-links to `{JIRA_URL}/browse/PROJ-123`
+   without having to paste the URL yourself, and its status gets refreshed
+   on the same schedule as the Jenkins sync. `JIRA_USER`/`JIRA_API_TOKEN`
+   are only needed if your JIRA requires auth to read issues — leave them
+   blank for anonymous/public read access.
 
    **If `package-lock.json` (or other files) keep showing as locally
    modified right after a fresh `git pull`/clone** on Windows, it's almost
@@ -198,8 +209,16 @@ mechanics differ (see the comments in `Dockerfile.windows`).
 4. On a test's detail page you can see the full failure history (with a
    link to the build in Jenkins, the error message, and the stack trace),
    and you can:
-   - assign a JIRA ticket (key, link, note),
+   - assign a JIRA ticket (key, link, note) — the link is filled in
+     automatically from `JIRA_URL` if you leave it blank,
    - add/remove any tags (managed globally on the **Tags** tab).
+5. If `JIRA_URL` is set, each ticket's status is checked on the same
+   schedule as the Jenkins sync (or on demand via the *"refresh"* link next
+   to it). A ⚠️ shows up — on the test's detail page and in the dashboard's
+   failing-tests table — whenever a ticket's JIRA status is in the "done"
+   category (Done/Closed/Resolved, whatever your workflow calls it) but the
+   test is still showing up as failing: the classic "we thought we fixed
+   this" case.
 
 Tests are identified by the pair `(className, testName)` within a given
 job, so a tag or ticket assigned once stays attached to the test
