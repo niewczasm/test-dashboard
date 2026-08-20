@@ -303,7 +303,7 @@ export default function DashboardPage() {
                       <Link
                         href={`/tests/${t.testCaseId}`}
                         className="block truncate font-medium hover:underline"
-                        style={{ color: "var(--text-primary)" }}
+                        style={{ color: "var(--text-primary)", direction: "rtl", textAlign: "left" }}
                         title={t.testName}
                       >
                         {shortTestName}
@@ -311,7 +311,7 @@ export default function DashboardPage() {
                       {shortClassName !== shortTestName && (
                         <div
                           className="truncate text-xs"
-                          style={{ color: "var(--text-muted)" }}
+                          style={{ color: "var(--text-muted)", direction: "rtl", textAlign: "left" }}
                           title={t.className}
                         >
                           {shortClassName}
