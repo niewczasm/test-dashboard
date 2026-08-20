@@ -109,6 +109,13 @@ export default function DashboardPage() {
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
   const showFailuresByJobChart = !jobId && jobs.length > 1;
+  // Collapsing one chart just hides its own body, leaving its header card in
+  // place next to the other one. Collapsing both is different — there's no
+  // point showing two empty header-only cards side by side, so the whole
+  // section goes away instead.
+  const bothChartsApplicable = days !== 1 && showFailuresByJobChart;
+  const bothChartsCollapsed = !failuresPerDayExpanded && !failuresByJobExpanded;
+  const hideChartsSection = bothChartsApplicable && bothChartsCollapsed;
 
   // Read persisted column widths / time window after mount only, so the
   // server-rendered markup (which has no access to localStorage) matches
@@ -396,7 +403,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {(days !== 1 || showFailuresByJobChart) && (
+      {(days !== 1 || showFailuresByJobChart) && !hideChartsSection && (
         <div
           className={`grid grid-cols-1 gap-4 ${days !== 1 && showFailuresByJobChart ? "lg:grid-cols-2" : ""}`}
         >
