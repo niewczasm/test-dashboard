@@ -98,10 +98,11 @@ export default function DashboardPage() {
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
-  const jobHealthList = [...jobs].sort((a, b) => {
+  const jobHealthList = (jobId ? jobs.filter((j) => j.id === jobId) : [...jobs]).sort((a, b) => {
     const diff = jobHealthPriority(a) - jobHealthPriority(b);
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
+  const showFailuresByJobChart = !jobId && jobs.length > 1;
 
   // Read persisted column widths / time window after mount only, so the
   // server-rendered markup (which has no access to localStorage) matches
@@ -335,20 +336,28 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="card p-4">
-          <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-            Failures per day
-          </h2>
-          <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
+      {(days !== 1 || showFailuresByJobChart) && (
+        <div
+          className={`grid grid-cols-1 gap-4 ${days !== 1 && showFailuresByJobChart ? "lg:grid-cols-2" : ""}`}
+        >
+          {days !== 1 && (
+            <div className="card p-4">
+              <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                Failures per day
+              </h2>
+              <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
+            </div>
+          )}
+          {showFailuresByJobChart && (
+            <div className="card p-4">
+              <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                Failures by job
+              </h2>
+              <FailuresByJobChart data={stats?.failuresByJob ?? []} />
+            </div>
+          )}
         </div>
-        <div className="card p-4">
-          <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-            Failures by job
-          </h2>
-          <FailuresByJobChart data={stats?.failuresByJob ?? []} />
-        </div>
-      </div>
+      )}
 
       <div className="card overflow-hidden">
         <div
