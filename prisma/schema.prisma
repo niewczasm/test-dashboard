@@ -1,0 +1,101 @@
+// Prisma schema for the Jenkins failing-tests dashboard
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id              String     @id @default(cuid())
+  name            String     @unique
+  jenkinsPath     String
+  enabled         Boolean    @default(true)
+  lastSyncedBuild Int?
+  lastSyncAt      DateTime?
+  lastSyncError   String?
+  createdAt       DateTime   @default(now())
+  builds          Build[]
+  testCases       TestCase[]
+}
+
+model Build {
+  id        String        @id @default(cuid())
+  job       Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId     String
+  number    Int
+  result    String?
+  timestamp DateTime
+  url       String
+  failures  TestFailure[]
+  createdAt DateTime      @default(now())
+
+  @@unique([jobId, number])
+  @@index([jobId, timestamp])
+}
+
+model TestCase {
+  id         String          @id @default(cuid())
+  job        Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId      String
+  className  String
+  testName   String
+  firstSeen  DateTime        @default(now())
+  lastSeen   DateTime        @default(now())
+  failures   TestFailure[]
+  ticket     Ticket?
+  tags       TagOnTestCase[]
+
+  @@unique([jobId, className, testName])
+  @@index([jobId])
+}
+
+model TestFailure {
+  id           String   @id @default(cuid())
+  testCase     TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  testCaseId   String
+  build        Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  buildId      String
+  status       String
+  errorMessage String?
+  stackTrace   String?
+  duration     Float?
+  createdAt    DateTime @default(now())
+
+  @@unique([testCaseId, buildId])
+  @@index([testCaseId])
+  @@index([buildId])
+}
+
+model Ticket {
+  id         String   @id @default(cuid())
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  testCaseId String   @unique
+  key        String
+  url        String?
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Tag {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  color     String          @default("#64748b")
+  createdAt DateTime        @default(now())
+  testCases TagOnTestCase[]
+}
+
+model TagOnTestCase {
+  testCase   TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  testCaseId String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  tagId      String
+  assignedAt DateTime @default(now())
+
+  @@id([testCaseId, tagId])
+}

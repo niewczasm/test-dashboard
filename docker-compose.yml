@@ -1,0 +1,16 @@
+services:
+  test-dashboard:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      JENKINS_URL: "https://jenkins.yourcompany.com"
+      JENKINS_USER: "your-jenkins-username"
+      JENKINS_API_TOKEN: "your-jenkins-api-token"
+      SYNC_INTERVAL_MINUTES: "15"
+    volumes:
+      - dashboard-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  dashboard-data:

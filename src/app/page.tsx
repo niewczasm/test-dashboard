@@ -1,69 +1,195 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { StatTile } from "@/components/StatTile";
+import { FailuresByJobChart } from "@/components/FailuresByJobChart";
+import { FailuresTrendChart } from "@/components/FailuresTrendChart";
+import { TagBadge } from "@/components/TagBadge";
+import type { JobDto, StatsDto } from "@/types/api";
+import { formatDistanceToNow } from "date-fns";
+
+const WINDOW_OPTIONS = [7, 14, 30, 90];
+
+export default function DashboardPage() {
+  const [days, setDays] = useState(30);
+  const [jobId, setJobId] = useState<string>("");
+  const [jobs, setJobs] = useState<JobDto[]>([]);
+  const [stats, setStats] = useState<StatsDto | null>(null);
+  const loading = stats === null;
+
+  useEffect(() => {
+    fetch("/api/jobs")
+      .then((r) => r.json())
+      .then(setJobs)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (jobId) params.set("jobId", jobId);
+    fetch(`/api/stats?${params}`)
+      .then((r) => r.json())
+      .then(setStats);
+  }, [days, jobId]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <select
+            value={jobId}
+            onChange={(e) => setJobId(e.target.value)}
+            className="card px-2 py-1.5 text-sm"
+          >
+            <option value="">All jobs</option>
+            {jobs.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.name}
+              </option>
+            ))}
+          </select>
+          <div className="card flex overflow-hidden text-sm">
+            {WINDOW_OPTIONS.map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className="px-3 py-1.5"
+                style={{
+                  background: days === d ? "var(--series-1)" : "transparent",
+                  color: days === d ? "#fff" : "var(--text-secondary)",
+                  fontWeight: days === d ? 600 : 400,
+                }}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {jobs.length === 0 && !loading && (
+        <div className="card p-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+          You haven&apos;t configured any Jenkins jobs yet.{" "}
+          <Link href="/jobs" className="underline" style={{ color: "var(--series-1)" }}>
+            Add your first job
+          </Link>{" "}
+          to start collecting data about failing tests.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile label="Failures in window" value={stats?.totalFailures ?? "–"} />
+        <StatTile
+          label="Unique failing tests"
+          value={stats?.uniqueFailingTests ?? "–"}
+          accent="var(--status-critical)"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+        <StatTile label="Tracked jobs" value={jobs.filter((j) => j.enabled).length} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="card p-4">
+          <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+            Failures per day
+          </h2>
+          <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="card p-4">
+          <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+            Failures by job
+          </h2>
+          <FailuresByJobChart data={stats?.failuresByJob ?? []} />
         </div>
-      </main>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="border-b p-4" style={{ borderColor: "var(--border)" }}>
+          <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+            Most frequently failing tests
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ color: "var(--text-muted)" }}>
+                <th className="px-4 py-2 text-left font-medium">Test</th>
+                <th className="px-4 py-2 text-left font-medium">Job</th>
+                <th className="px-4 py-2 text-left font-medium">Failures</th>
+                <th className="px-4 py-2 text-left font-medium">Last failure</th>
+                <th className="px-4 py-2 text-left font-medium">Ticket</th>
+                <th className="px-4 py-2 text-left font-medium">Tags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(stats?.topFailingTests ?? []).map((t) => (
+                <tr key={t.testCaseId} className="border-t" style={{ borderColor: "var(--gridline)" }}>
+                  <td className="px-4 py-2">
+                    <Link
+                      href={`/tests/${t.testCaseId}`}
+                      className="font-medium hover:underline"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {t.testName}
+                    </Link>
+                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {t.className}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2" style={{ color: "var(--text-secondary)" }}>
+                    {t.jobName}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span
+                      className="inline-flex min-w-[1.75rem] justify-center rounded-full px-2 py-0.5 text-xs font-semibold"
+                      style={{ background: "var(--status-critical)", color: "#fff" }}
+                    >
+                      {t.failureCount}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2" style={{ color: "var(--text-secondary)" }}>
+                    {formatDistanceToNow(new Date(t.lastFailedAt), { addSuffix: true })}
+                  </td>
+                  <td className="px-4 py-2">
+                    {t.ticket ? (
+                      t.ticket.url ? (
+                        <a
+                          href={t.ticket.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                          style={{ color: "var(--series-1)" }}
+                        >
+                          {t.ticket.key}
+                        </a>
+                      ) : (
+                        <span>{t.ticket.key}</span>
+                      )
+                    ) : (
+                      <span style={{ color: "var(--text-muted)" }}>—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex flex-wrap gap-1">
+                      {t.tags.map((tag) => (
+                        <TagBadge key={tag.id} name={tag.name} color={tag.color} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && (stats?.topFailingTests.length ?? 0) === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center" style={{ color: "var(--text-muted)" }}>
+                    No failing tests in the selected window.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
