@@ -6,17 +6,61 @@ import { StatTile } from "@/components/StatTile";
 import { FailuresByJobChart } from "@/components/FailuresByJobChart";
 import { FailuresTrendChart } from "@/components/FailuresTrendChart";
 import { TagBadge } from "@/components/TagBadge";
-import type { JobDto, StatsDto } from "@/types/api";
+import type { JobDto, StatsDto, TopFailingTestDto } from "@/types/api";
+import { shortenTestIdentifier } from "@/lib/testName";
 import { formatDistanceToNow } from "date-fns";
 
 const WINDOW_OPTIONS = [7, 14, 30, 90];
+
+type SortColumn = "test" | "job" | "failures" | "lastFailed";
+type SortDirection = "asc" | "desc";
+
+const COLUMNS: { key: SortColumn; label: string }[] = [
+  { key: "test", label: "Test" },
+  { key: "job", label: "Job" },
+  { key: "failures", label: "Failures" },
+  { key: "lastFailed", label: "Last failure" },
+];
+
+function sortValue(t: TopFailingTestDto, jenkinsPath: string, column: SortColumn) {
+  switch (column) {
+    case "test":
+      return shortenTestIdentifier(t.testName, jenkinsPath).toLowerCase();
+    case "job":
+      return t.jobName.toLowerCase();
+    case "failures":
+      return t.failureCount;
+    case "lastFailed":
+      return t.lastFailedAt;
+  }
+}
 
 export default function DashboardPage() {
   const [days, setDays] = useState(30);
   const [jobId, setJobId] = useState<string>("");
   const [jobs, setJobs] = useState<JobDto[]>([]);
   const [stats, setStats] = useState<StatsDto | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>("failures");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const loading = stats === null;
+
+  const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
+
+  function toggleSort(column: SortColumn) {
+    if (column === sortColumn) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDirection(column === "failures" || column === "lastFailed" ? "desc" : "asc");
+    }
+  }
+
+  const sortedTests = [...(stats?.topFailingTests ?? [])].sort((a, b) => {
+    const av = sortValue(a, jenkinsPathByJobId.get(a.jobId) ?? "", sortColumn);
+    const bv = sortValue(b, jenkinsPathByJobId.get(b.jobId) ?? "", sortColumn);
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return sortDirection === "asc" ? cmp : -cmp;
+  });
 
   useEffect(() => {
     fetch("/api/jobs")
@@ -114,28 +158,49 @@ export default function DashboardPage() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: "var(--text-muted)" }}>
-                <th className="px-4 py-2 text-left font-medium">Test</th>
-                <th className="px-4 py-2 text-left font-medium">Job</th>
-                <th className="px-4 py-2 text-left font-medium">Failures</th>
-                <th className="px-4 py-2 text-left font-medium">Last failure</th>
+                {COLUMNS.map((col) => (
+                  <th key={col.key} className="px-4 py-2 text-left font-medium">
+                    <button
+                      onClick={() => toggleSort(col.key)}
+                      className="inline-flex items-center gap-1 hover:underline"
+                      style={{ color: sortColumn === col.key ? "var(--text-primary)" : "inherit" }}
+                    >
+                      {col.label}
+                      <span style={{ opacity: sortColumn === col.key ? 1 : 0.25 }}>
+                        {sortColumn === col.key && sortDirection === "asc" ? "▲" : "▼"}
+                      </span>
+                    </button>
+                  </th>
+                ))}
                 <th className="px-4 py-2 text-left font-medium">Ticket</th>
                 <th className="px-4 py-2 text-left font-medium">Tags</th>
               </tr>
             </thead>
             <tbody>
-              {(stats?.topFailingTests ?? []).map((t) => (
+              {sortedTests.map((t) => {
+                const jenkinsPath = jenkinsPathByJobId.get(t.jobId) ?? "";
+                const shortTestName = shortenTestIdentifier(t.testName, jenkinsPath);
+                const shortClassName = shortenTestIdentifier(t.className, jenkinsPath);
+                return (
                 <tr key={t.testCaseId} className="border-t" style={{ borderColor: "var(--gridline)" }}>
                   <td className="px-4 py-2">
                     <Link
                       href={`/tests/${t.testCaseId}`}
                       className="font-medium hover:underline"
                       style={{ color: "var(--text-primary)" }}
+                      title={t.testName !== shortTestName ? t.testName : undefined}
                     >
-                      {t.testName}
+                      {shortTestName}
                     </Link>
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      {t.className}
-                    </div>
+                    {shortClassName !== shortTestName && (
+                      <div
+                        className="text-xs"
+                        style={{ color: "var(--text-muted)" }}
+                        title={t.className !== shortClassName ? t.className : undefined}
+                      >
+                        {shortClassName}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2" style={{ color: "var(--text-secondary)" }}>
                     {t.jobName}
@@ -178,7 +243,8 @@ export default function DashboardPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {!loading && (stats?.topFailingTests.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center" style={{ color: "var(--text-muted)" }}>

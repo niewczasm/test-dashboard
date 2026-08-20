@@ -4,6 +4,7 @@ import { useEffect, useState, use as usePromise } from "react";
 import Link from "next/link";
 import type { TagDto, TestCaseDetailDto } from "@/types/api";
 import { TagBadge } from "@/components/TagBadge";
+import { shortenTestIdentifier } from "@/lib/testName";
 import { format } from "date-fns";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -84,6 +85,8 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
 
   const attachedTagIds = new Set(testCase.tags.map((t) => t.tag.id));
   const availableTags = allTags.filter((t) => !attachedTagIds.has(t.id));
+  const shortTestName = shortenTestIdentifier(testCase.testName, testCase.job.jenkinsPath);
+  const shortClassName = shortenTestIdentifier(testCase.className, testCase.job.jenkinsPath);
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,9 +94,17 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
         <Link href="/" className="text-xs underline" style={{ color: "var(--series-1)" }}>
           ← Dashboard
         </Link>
-        <h1 className="mt-1 text-xl font-semibold">{testCase.testName}</h1>
+        <h1
+          className="mt-1 text-xl font-semibold"
+          title={shortTestName !== testCase.testName ? testCase.testName : undefined}
+        >
+          {shortTestName}
+        </h1>
         <div className="text-sm" style={{ color: "var(--text-secondary)" }}>
-          {testCase.className} · job{" "}
+          <span title={shortClassName !== testCase.className ? testCase.className : undefined}>
+            {shortClassName}
+          </span>{" "}
+          · job{" "}
           <Link href="/jobs" className="underline">
             {testCase.job.name}
           </Link>
