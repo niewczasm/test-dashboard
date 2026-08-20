@@ -232,6 +232,15 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                     >
                       open in Jenkins
                     </a>
+                    {f.build.invalid && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-xs font-semibold"
+                        style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}
+                        title={f.build.invalidReason ?? undefined}
+                      >
+                        INVALID BUILD{f.build.invalidReason ? `: ${f.build.invalidReason}` : ""}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                     {format(new Date(f.build.timestamp), "d MMM yyyy, HH:mm")}

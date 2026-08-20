@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
        JOIN TestCase tc ON tc.id = tf.testCaseId
        JOIN Job j ON j.id = tc.jobId
        LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
-       WHERE b.timestamp >= ? ${jobFilter}
+       WHERE b.timestamp >= ? AND b.invalid = 0 ${jobFilter}
        ORDER BY b.timestamp ASC`
     )
     .all(...params) as unknown as FailureRow[];

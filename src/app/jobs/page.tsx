@@ -1,8 +1,11 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { JobDto, SyncLogDto } from "@/types/api";
+import type { BuildFailureDto, JobBuildDto, JobDto, SyncLogDto } from "@/types/api";
+import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
+
+type Panel = "logs" | "builds" | null;
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobDto[]>([]);
@@ -13,6 +16,7 @@ export default function JobsPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<Panel>(null);
   const [logs, setLogs] = useState<SyncLogDto[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
@@ -32,14 +36,15 @@ export default function JobsPage() {
       .finally(() => setLogsLoading(false));
   }
 
-  function toggleLogs(jobId: string) {
-    if (expandedJobId === jobId) {
+  function togglePanel(jobId: string, which: Exclude<Panel, null>) {
+    if (expandedJobId === jobId && panel === which) {
       setExpandedJobId(null);
-      setLogs([]);
+      setPanel(null);
       return;
     }
     setExpandedJobId(jobId);
-    loadLogs(jobId);
+    setPanel(which);
+    if (which === "logs") loadLogs(jobId);
   }
 
   async function addJob(e: React.FormEvent) {
@@ -79,7 +84,7 @@ export default function JobsPage() {
     await fetch(`/api/jobs/${job.id}`, { method: "DELETE" });
     if (expandedJobId === job.id) {
       setExpandedJobId(null);
-      setLogs([]);
+      setPanel(null);
     }
     load();
   }
@@ -93,7 +98,7 @@ export default function JobsPage() {
         alert(data.error ?? "Sync failed");
       }
       load();
-      if (expandedJobId === job.id) {
+      if (expandedJobId === job.id && panel === "logs") {
         loadLogs(job.id);
       }
     } finally {
@@ -191,7 +196,7 @@ export default function JobsPage() {
                     </button>
                   </td>
                   <td className="px-4 py-2">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => syncOne(job)}
                         disabled={syncingId === job.id}
@@ -201,11 +206,18 @@ export default function JobsPage() {
                         {syncingId === job.id ? "syncing…" : "sync"}
                       </button>
                       <button
-                        onClick={() => toggleLogs(job.id)}
+                        onClick={() => togglePanel(job.id, "logs")}
                         className="text-xs underline"
                         style={{ color: "var(--series-1)" }}
                       >
-                        {expandedJobId === job.id ? "hide logs" : "logs"}
+                        {expandedJobId === job.id && panel === "logs" ? "hide logs" : "logs"}
+                      </button>
+                      <button
+                        onClick={() => togglePanel(job.id, "builds")}
+                        className="text-xs underline"
+                        style={{ color: "var(--series-1)" }}
+                      >
+                        {expandedJobId === job.id && panel === "builds" ? "hide builds" : "builds"}
                       </button>
                       <button
                         onClick={() => removeJob(job)}
@@ -220,7 +232,8 @@ export default function JobsPage() {
                 {expandedJobId === job.id && (
                   <tr className="border-t" style={{ borderColor: "var(--gridline)" }}>
                     <td colSpan={6} className="px-4 py-3" style={{ background: "var(--page)" }}>
-                      <SyncLogPanel logs={logs} loading={logsLoading} />
+                      {panel === "logs" && <SyncLogPanel logs={logs} loading={logsLoading} />}
+                      {panel === "builds" && <BuildsPanel jobId={job.id} />}
                     </td>
                   </tr>
                 )}
@@ -279,6 +292,234 @@ function SyncLogPanel({ logs, loading }: { logs: SyncLogDto[]; loading: boolean 
               {format(new Date(log.startedAt), "d MMM yyyy, HH:mm:ss")}
             </span>
             <span style={{ color: "var(--text-primary)" }}>{log.message}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function BuildsPanel({ jobId }: { jobId: string }) {
+  const [builds, setBuilds] = useState<JobBuildDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedBuildId, setExpandedBuildId] = useState<string | null>(null);
+  const [buildFailures, setBuildFailures] = useState<BuildFailureDto[]>([]);
+  const [failuresLoading, setFailuresLoading] = useState(false);
+  const [reasonDraftFor, setReasonDraftFor] = useState<string | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function load() {
+    setLoading(true);
+    fetch(`/api/jobs/${jobId}/builds`)
+      .then((r) => r.json())
+      .then(setBuilds)
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    queueMicrotask(load);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  function toggleFailures(buildId: string) {
+    if (expandedBuildId === buildId) {
+      setExpandedBuildId(null);
+      return;
+    }
+    setExpandedBuildId(buildId);
+    setFailuresLoading(true);
+    fetch(`/api/builds/${buildId}/failures`)
+      .then((r) => r.json())
+      .then(setBuildFailures)
+      .finally(() => setFailuresLoading(false));
+  }
+
+  async function markInvalid(buildId: string) {
+    if (!reasonText.trim()) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/builds/${buildId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invalid: true, reason: reasonText.trim() }),
+      });
+      setReasonDraftFor(null);
+      setReasonText("");
+      load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unmarkInvalid(buildId: string) {
+    setSaving(true);
+    try {
+      await fetch(`/api/builds/${buildId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invalid: false }),
+      });
+      load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Loading builds…
+      </p>
+    );
+  }
+  if (builds.length === 0) {
+    return (
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        No builds synced yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Recent builds — mark a build invalid (e.g. infra outage causing mass failures) to
+          exclude its failures from dashboard stats. Full history stays visible here.
+        </div>
+        <button onClick={load} className="text-xs underline shrink-0" style={{ color: "var(--series-1)" }}>
+          refresh
+        </button>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {builds.map((b) => (
+          <li key={b.id} className="rounded-md border p-2" style={{ borderColor: "var(--gridline)" }}>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <a
+                href={b.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium underline"
+                style={{ color: "var(--series-1)" }}
+              >
+                #{b.number}
+              </a>
+              <span
+                className="rounded px-1.5 py-0.5 font-semibold text-white"
+                style={{
+                  background:
+                    b.result === "SUCCESS" ? "var(--status-good)" : "var(--status-critical)",
+                }}
+              >
+                {b.result ?? "?"}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                {format(new Date(b.timestamp), "d MMM yyyy, HH:mm")}
+              </span>
+              {b.failureCount > 0 ? (
+                <button
+                  onClick={() => toggleFailures(b.id)}
+                  className="rounded-full px-2 py-0.5 font-semibold text-white"
+                  style={{ background: "var(--status-critical)" }}
+                >
+                  {b.failureCount} failed {expandedBuildId === b.id ? "▲" : "▼"}
+                </button>
+              ) : (
+                <span style={{ color: "var(--text-muted)" }}>0 failed</span>
+              )}
+              {b.invalid ? (
+                <span
+                  className="rounded px-1.5 py-0.5 font-semibold"
+                  style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}
+                >
+                  INVALID
+                </span>
+              ) : null}
+              <div className="ml-auto flex items-center gap-2">
+                {b.invalid ? (
+                  <button
+                    onClick={() => unmarkInvalid(b.id)}
+                    disabled={saving}
+                    className="underline disabled:opacity-60"
+                    style={{ color: "var(--series-1)" }}
+                  >
+                    unmark invalid
+                  </button>
+                ) : reasonDraftFor === b.id ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={reasonText}
+                      onChange={(e) => setReasonText(e.target.value)}
+                      placeholder="reason, e.g. CI infra outage"
+                      className="rounded border px-1.5 py-0.5 text-xs"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-1)", width: 200 }}
+                    />
+                    <button
+                      onClick={() => markInvalid(b.id)}
+                      disabled={saving || !reasonText.trim()}
+                      className="underline disabled:opacity-60"
+                      style={{ color: "var(--series-1)" }}
+                    >
+                      confirm
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReasonDraftFor(null);
+                        setReasonText("");
+                      }}
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setReasonDraftFor(b.id)}
+                    className="underline"
+                    style={{ color: "var(--status-critical)" }}
+                  >
+                    mark invalid
+                  </button>
+                )}
+              </div>
+            </div>
+            {b.invalid && b.invalidReason && (
+              <div className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                Reason: {b.invalidReason}
+                {b.invalidAt && (
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {" "}
+                    · {format(new Date(b.invalidAt), "d MMM yyyy, HH:mm")}
+                  </span>
+                )}
+              </div>
+            )}
+            {expandedBuildId === b.id && (
+              <div className="mt-2 border-t pt-2" style={{ borderColor: "var(--gridline)" }}>
+                {failuresLoading ? (
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    Loading…
+                  </span>
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {buildFailures.map((f) => (
+                      <li key={f.testCaseId} className="text-xs">
+                        <Link
+                          href={`/tests/${f.testCaseId}`}
+                          className="underline"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          {f.testName}
+                        </Link>
+                        <span style={{ color: "var(--text-muted)" }}> ({f.className})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </li>
         ))}
       </ul>

@@ -57,6 +57,28 @@ export interface BuildDto {
   result: string | null;
   timestamp: string;
   url: string;
+  invalid: boolean;
+  invalidReason: string | null;
+}
+
+export interface JobBuildDto {
+  id: string;
+  number: number;
+  result: string | null;
+  timestamp: string;
+  url: string;
+  invalid: boolean;
+  invalidReason: string | null;
+  invalidAt: string | null;
+  failureCount: number;
+}
+
+export interface BuildFailureDto {
+  testCaseId: string;
+  className: string;
+  testName: string;
+  status: string;
+  errorMessage: string | null;
 }
 
 export interface TestFailureDto {

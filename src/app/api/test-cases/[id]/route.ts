@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, toBool } from "@/lib/db";
 
 interface TestCaseDetailRow {
   id: string;
@@ -39,6 +39,8 @@ interface FailureRow {
   buildResult: string | null;
   buildTimestamp: string;
   buildUrl: string;
+  buildInvalid: number;
+  buildInvalidReason: string | null;
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -76,7 +78,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       `SELECT
          tf.id, tf.status, tf.errorMessage, tf.stackTrace, tf.stdout, tf.stderr, tf.duration, tf.createdAt,
          b.id AS buildId, b.number AS buildNumber, b.result AS buildResult,
-         b.timestamp AS buildTimestamp, b.url AS buildUrl
+         b.timestamp AS buildTimestamp, b.url AS buildUrl,
+         b.invalid AS buildInvalid, b.invalidReason AS buildInvalidReason
        FROM TestFailure tf
        JOIN Build b ON b.id = tf.buildId
        WHERE tf.testCaseId = ?
@@ -119,6 +122,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         result: f.buildResult,
         timestamp: f.buildTimestamp,
         url: f.buildUrl,
+        invalid: toBool(f.buildInvalid),
+        invalidReason: f.buildInvalidReason,
       },
     })),
   });

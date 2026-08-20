@@ -49,6 +49,9 @@ db.exec(`
     timestamp TEXT NOT NULL,
     url TEXT NOT NULL,
     createdAt TEXT NOT NULL,
+    invalid INTEGER NOT NULL DEFAULT 0,
+    invalidReason TEXT,
+    invalidAt TEXT,
     UNIQUE (jobId, number)
   );
   CREATE INDEX IF NOT EXISTS idx_build_job_timestamp ON Build (jobId, timestamp);
@@ -143,6 +146,9 @@ function ensureColumn(table: string, column: string, definition: string) {
 
 ensureColumn("TestFailure", "stdout", "TEXT");
 ensureColumn("TestFailure", "stderr", "TEXT");
+ensureColumn("Build", "invalid", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("Build", "invalidReason", "TEXT");
+ensureColumn("Build", "invalidAt", "TEXT");
 
 /** The subset of SQLite bind-parameter types this app actually uses. */
 export type SqlParam = string | number | null;

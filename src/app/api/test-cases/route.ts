@@ -62,7 +62,8 @@ export async function GET(req: NextRequest) {
          j.name AS jobName,
          tk.id AS ticketId, tk.key AS ticketKey, tk.url AS ticketUrl, tk.note AS ticketNote,
          tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
-         (SELECT COUNT(*) FROM TestFailure WHERE testCaseId = tc.id) AS failureCount
+         (SELECT COUNT(*) FROM TestFailure tf JOIN Build b ON b.id = tf.buildId
+          WHERE tf.testCaseId = tc.id AND b.invalid = 0) AS failureCount
        FROM TestCase tc
        JOIN Job j ON j.id = tc.jobId
        LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
