@@ -101,6 +101,11 @@ export default function DashboardPage() {
   const [latestBuildsExpanded, setLatestBuildsExpanded] = useState(true);
   const [failuresByJobExpanded, setFailuresByJobExpanded] = useState(true);
   const [failuresPerDayExpanded, setFailuresPerDayExpanded] = useState(true);
+  // Stays false until the localStorage read below resolves, so the very
+  // first stats fetch already uses the persisted time window instead of
+  // firing once with the default (30d) and again moments later with the
+  // corrected value — that double-fetch was the visible flicker.
+  const [daysReady, setDaysReady] = useState(false);
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
@@ -134,6 +139,8 @@ export default function DashboardPage() {
         if (WINDOW_OPTIONS.includes(rawDays)) setDays(rawDays);
       } catch {
         // ignore malformed/unavailable storage
+      } finally {
+        setDaysReady(true);
       }
       try {
         const rawLatestBuilds = localStorage.getItem(LATEST_BUILDS_EXPANDED_KEY);
@@ -213,12 +220,13 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!daysReady) return;
     const params = new URLSearchParams({ days: String(days) });
     if (jobId) params.set("jobId", jobId);
     fetch(`/api/stats?${params}`)
       .then((r) => r.json())
       .then(setStats);
-  }, [days, jobId]);
+  }, [days, jobId, daysReady]);
 
   function toggleSort(column: SortColumn) {
     if (column === sortColumn) {
