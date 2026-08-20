@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db, newId, nowIso } from "@/lib/db";
 import { z } from "zod";
 
 const addTagSchema = z.object({
@@ -7,6 +7,13 @@ const addTagSchema = z.object({
   name: z.string().trim().min(1).optional(),
   color: z.string().trim().optional(),
 });
+
+interface TagRow {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: string;
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: testCaseId } = await params;
@@ -16,19 +23,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "tagId or name is required" }, { status: 400 });
   }
 
-  const tag = parsed.data.tagId
-    ? await prisma.tag.findUniqueOrThrow({ where: { id: parsed.data.tagId } })
-    : await prisma.tag.upsert({
-        where: { name: parsed.data.name! },
-        create: { name: parsed.data.name!, color: parsed.data.color || undefined },
-        update: {},
-      });
+  let tag: TagRow;
+  if (parsed.data.tagId) {
+    const existing = db.prepare("SELECT * FROM Tag WHERE id = ?").get(parsed.data.tagId) as unknown as
+      | TagRow
+      | undefined;
+    if (!existing) {
+      return NextResponse.json({ error: "tag not found" }, { status: 404 });
+    }
+    tag = existing;
+  } else {
+    tag = db
+      .prepare(
+        `INSERT INTO Tag (id, name, color, createdAt) VALUES (?, ?, ?, ?)
+         ON CONFLICT (name) DO UPDATE SET name = excluded.name
+         RETURNING *`
+      )
+      .get(newId(), parsed.data.name!, parsed.data.color || "#64748b", nowIso()) as unknown as TagRow;
+  }
 
-  await prisma.tagOnTestCase.upsert({
-    where: { testCaseId_tagId: { testCaseId, tagId: tag.id } },
-    create: { testCaseId, tagId: tag.id },
-    update: {},
-  });
+  db.prepare(
+    `INSERT INTO TagOnTestCase (testCaseId, tagId, assignedAt) VALUES (?, ?, ?)
+     ON CONFLICT (testCaseId, tagId) DO NOTHING`
+  ).run(testCaseId, tag.id, nowIso());
 
   return NextResponse.json(tag, { status: 201 });
 }
@@ -39,6 +56,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!tagId) {
     return NextResponse.json({ error: "tagId query param is required" }, { status: 400 });
   }
-  await prisma.tagOnTestCase.delete({ where: { testCaseId_tagId: { testCaseId, tagId } } });
+  db.prepare("DELETE FROM TagOnTestCase WHERE testCaseId = ? AND tagId = ?").run(testCaseId, tagId);
   return NextResponse.json({ ok: true });
 }

@@ -1,29 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db, inPlaceholders, type SqlParam } from "@/lib/db";
 import { subDays } from "date-fns";
+
+interface FailureRow {
+  testCaseId: string;
+  className: string;
+  testName: string;
+  jobId: string;
+  jobName: string;
+  buildTimestamp: string;
+  ticketKey: string | null;
+  ticketUrl: string | null;
+}
+
+interface TagRow {
+  testCaseId: string;
+  id: string;
+  name: string;
+  color: string;
+}
 
 export async function GET(req: NextRequest) {
   const days = Number(req.nextUrl.searchParams.get("days") ?? "30");
   const jobId = req.nextUrl.searchParams.get("jobId") ?? undefined;
-  const since = subDays(new Date(), Number.isFinite(days) && days > 0 ? days : 30);
+  const since = subDays(new Date(), Number.isFinite(days) && days > 0 ? days : 30).toISOString();
 
-  const failures = await prisma.testFailure.findMany({
-    where: {
-      build: { timestamp: { gte: since } },
-      testCase: jobId ? { jobId } : undefined,
-    },
-    include: {
-      testCase: {
-        include: {
-          job: { select: { id: true, name: true } },
-          ticket: true,
-          tags: { include: { tag: true } },
-        },
-      },
-      build: { select: { number: true, timestamp: true } },
-    },
-    orderBy: { build: { timestamp: "asc" } },
-  });
+  const params: SqlParam[] = [since];
+  let jobFilter = "";
+  if (jobId) {
+    jobFilter = "AND tc.jobId = ?";
+    params.push(jobId);
+  }
+
+  const failures = db
+    .prepare(
+      `SELECT
+         tc.id AS testCaseId,
+         tc.className,
+         tc.testName,
+         j.id AS jobId,
+         j.name AS jobName,
+         b.timestamp AS buildTimestamp,
+         tk.key AS ticketKey,
+         tk.url AS ticketUrl
+       FROM TestFailure tf
+       JOIN Build b ON b.id = tf.buildId
+       JOIN TestCase tc ON tc.id = tf.testCaseId
+       JOIN Job j ON j.id = tc.jobId
+       LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
+       WHERE b.timestamp >= ? ${jobFilter}
+       ORDER BY b.timestamp ASC`
+    )
+    .all(...params) as unknown as FailureRow[];
+
+  const testCaseIds = [...new Set(failures.map((f) => f.testCaseId))];
+  const tagsByTestCase = new Map<string, { id: string; name: string; color: string }[]>();
+  if (testCaseIds.length > 0) {
+    const tagRows = db
+      .prepare(
+        `SELECT toc.testCaseId, tg.id, tg.name, tg.color
+         FROM TagOnTestCase toc
+         JOIN Tag tg ON tg.id = toc.tagId
+         WHERE toc.testCaseId IN (${inPlaceholders(testCaseIds)})`
+      )
+      .all(...testCaseIds) as unknown as TagRow[];
+    for (const row of tagRows) {
+      const list = tagsByTestCase.get(row.testCaseId) ?? [];
+      list.push({ id: row.id, name: row.name, color: row.color });
+      tagsByTestCase.set(row.testCaseId, list);
+    }
+  }
 
   const byTestCase = new Map<
     string,
@@ -43,31 +89,29 @@ export async function GET(req: NextRequest) {
   const byDay = new Map<string, number>();
 
   for (const f of failures) {
-    const tc = f.testCase;
-    const key = tc.id;
-    const existing = byTestCase.get(key);
+    const existing = byTestCase.get(f.testCaseId);
     if (existing) {
       existing.failureCount += 1;
-      if (f.build.timestamp.toISOString() > existing.lastFailedAt) {
-        existing.lastFailedAt = f.build.timestamp.toISOString();
+      if (f.buildTimestamp > existing.lastFailedAt) {
+        existing.lastFailedAt = f.buildTimestamp;
       }
     } else {
-      byTestCase.set(key, {
-        testCaseId: tc.id,
-        className: tc.className,
-        testName: tc.testName,
-        jobId: tc.job.id,
-        jobName: tc.job.name,
+      byTestCase.set(f.testCaseId, {
+        testCaseId: f.testCaseId,
+        className: f.className,
+        testName: f.testName,
+        jobId: f.jobId,
+        jobName: f.jobName,
         failureCount: 1,
-        lastFailedAt: f.build.timestamp.toISOString(),
-        ticket: tc.ticket ? { key: tc.ticket.key, url: tc.ticket.url } : null,
-        tags: tc.tags.map((t) => ({ id: t.tag.id, name: t.tag.name, color: t.tag.color })),
+        lastFailedAt: f.buildTimestamp,
+        ticket: f.ticketKey ? { key: f.ticketKey, url: f.ticketUrl } : null,
+        tags: tagsByTestCase.get(f.testCaseId) ?? [],
       });
     }
 
-    byJob.set(tc.job.name, (byJob.get(tc.job.name) ?? 0) + 1);
+    byJob.set(f.jobName, (byJob.get(f.jobName) ?? 0) + 1);
 
-    const day = f.build.timestamp.toISOString().slice(0, 10);
+    const day = f.buildTimestamp.slice(0, 10);
     byDay.set(day, (byDay.get(day) ?? 0) + 1);
   }
 

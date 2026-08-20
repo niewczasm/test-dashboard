@@ -7,10 +7,23 @@ builds, manual JIRA ticket assignment, and tagging of tests.
 ## Stack
 
 - Next.js (App Router) + TypeScript
-- SQLite + Prisma
+- SQLite via Node's built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html)
+  module — no ORM, no native binary to download, nothing beyond Node itself.
+  The schema (plain `CREATE TABLE IF NOT EXISTS` statements) is applied
+  automatically the first time the app touches the database, so there's no
+  separate migration step to run.
 - `node-cron` for periodic synchronization with the Jenkins REST API
 
+> **Why no Prisma/ORM?** Prisma needs to download a native query-engine
+> binary from its own CDN on `install`/`generate`, which many corporate
+> networks block. `node:sqlite` ships inside the Node.js binary itself —
+> nothing to fetch, nothing that can be blocked by a proxy.
+
 ## Local setup (without Docker)
+
+> Requires **Node.js 22.5+** — that's the version `node:sqlite` shipped in.
+> `docker compose`/`Dockerfile` already pin a Node 22 image, so this only
+> matters for running the app directly on your machine.
 
 1. Install dependencies:
 
@@ -30,13 +43,9 @@ builds, manual JIRA ticket assignment, and tagging of tests.
    Generate the API token in Jenkins: user profile → *Configure* →
    *API Token* → *Add new Token*.
 
-3. Initialize the database:
-
-   ```bash
-   npx prisma migrate deploy
-   ```
-
-4. Run the app:
+3. Run the app — the SQLite database and its schema are created
+   automatically on first run at the path in `DATABASE_URL` (default
+   `./data/dev.db`):
 
    ```bash
    npm run dev     # development mode
@@ -46,11 +55,11 @@ builds, manual JIRA ticket assignment, and tagging of tests.
 
 ## Docker
 
-The repo includes a multi-stage `Dockerfile` that builds the app and, on
-container start, runs `prisma migrate deploy` before starting the Next.js
-server on port `3000`. The SQLite database lives at `/app/data/prod.db`
-inside the container — mount that directory as a volume so data survives
-rebuilds/restarts.
+The repo includes a multi-stage `Dockerfile` that builds the app and starts
+the Next.js server on port `3000` — the database schema is created
+automatically on first run, no separate migration step needed. The SQLite
+database lives at `/app/data/prod.db` inside the container — mount that
+directory as a volume so data survives rebuilds/restarts.
 
 Build and run standalone:
 

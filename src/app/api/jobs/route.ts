@@ -1,14 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db, newId, nowIso, toBool } from "@/lib/db";
 import { z } from "zod";
 
+interface JobRow {
+  id: string;
+  name: string;
+  jenkinsPath: string;
+  enabled: number;
+  lastSyncedBuild: number | null;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  createdAt: string;
+  testCaseCount: number;
+}
+
 export async function GET() {
-  const jobs = await prisma.job.findMany({
-    orderBy: { name: "asc" },
-    include: {
-      _count: { select: { testCases: true } },
-    },
-  });
+  const rows = db
+    .prepare(
+      `SELECT j.*, (SELECT COUNT(*) FROM TestCase tc WHERE tc.jobId = j.id) AS testCaseCount
+       FROM Job j
+       ORDER BY j.name ASC`
+    )
+    .all() as unknown as JobRow[];
+
+  const jobs = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    jenkinsPath: r.jenkinsPath,
+    enabled: toBool(r.enabled),
+    lastSyncedBuild: r.lastSyncedBuild,
+    lastSyncAt: r.lastSyncAt,
+    lastSyncError: r.lastSyncError,
+    createdAt: r.createdAt,
+    _count: { testCases: r.testCaseCount },
+  }));
+
   return NextResponse.json(jobs);
 }
 
@@ -23,6 +49,25 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const job = await prisma.job.create({ data: parsed.data });
-  return NextResponse.json(job, { status: 201 });
+
+  const id = newId();
+  const createdAt = nowIso();
+  db.prepare(
+    `INSERT INTO Job (id, name, jenkinsPath, enabled, lastSyncedBuild, lastSyncAt, lastSyncError, createdAt)
+     VALUES (?, ?, ?, 1, NULL, NULL, NULL, ?)`
+  ).run(id, parsed.data.name, parsed.data.jenkinsPath, createdAt);
+
+  return NextResponse.json(
+    {
+      id,
+      name: parsed.data.name,
+      jenkinsPath: parsed.data.jenkinsPath,
+      enabled: true,
+      lastSyncedBuild: null,
+      lastSyncAt: null,
+      lastSyncError: null,
+      createdAt,
+    },
+    { status: 201 }
+  );
 }

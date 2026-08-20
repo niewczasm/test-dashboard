@@ -1,12 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { db, newId, nowIso } from "@/lib/db";
 import { z } from "zod";
 
+interface TagRow {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: string;
+  testCaseCount: number;
+}
+
 export async function GET() {
-  const tags = await prisma.tag.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { testCases: true } } },
-  });
+  const rows = db
+    .prepare(
+      `SELECT tg.*, (SELECT COUNT(*) FROM TagOnTestCase WHERE tagId = tg.id) AS testCaseCount
+       FROM Tag tg
+       ORDER BY tg.name ASC`
+    )
+    .all() as unknown as TagRow[];
+
+  const tags = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    color: r.color,
+    createdAt: r.createdAt,
+    _count: { testCases: r.testCaseCount },
+  }));
+
   return NextResponse.json(tags);
 }
 
@@ -21,8 +41,16 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-  const tag = await prisma.tag.create({
-    data: { name: parsed.data.name, color: parsed.data.color || undefined },
-  });
-  return NextResponse.json(tag, { status: 201 });
+
+  const id = newId();
+  const createdAt = nowIso();
+  const color = parsed.data.color || "#64748b";
+  db.prepare("INSERT INTO Tag (id, name, color, createdAt) VALUES (?, ?, ?, ?)").run(
+    id,
+    parsed.data.name,
+    color,
+    createdAt
+  );
+
+  return NextResponse.json({ id, name: parsed.data.name, color, createdAt }, { status: 201 });
 }
