@@ -37,6 +37,7 @@ const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
 const DAYS_STORAGE_KEY = "dashboard-days-window";
 const LATEST_BUILDS_EXPANDED_KEY = "dashboard-latest-builds-expanded";
 const FAILURES_BY_JOB_EXPANDED_KEY = "dashboard-failures-by-job-expanded";
+const FAILURES_PER_DAY_EXPANDED_KEY = "dashboard-failures-per-day-expanded";
 
 type SortColumn = "test" | "job" | "failures" | "lastFailed";
 type SortDirection = "asc" | "desc";
@@ -99,6 +100,7 @@ export default function DashboardPage() {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const [latestBuildsExpanded, setLatestBuildsExpanded] = useState(true);
   const [failuresByJobExpanded, setFailuresByJobExpanded] = useState(true);
+  const [failuresPerDayExpanded, setFailuresPerDayExpanded] = useState(true);
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
@@ -131,6 +133,8 @@ export default function DashboardPage() {
         if (rawLatestBuilds !== null) setLatestBuildsExpanded(rawLatestBuilds === "true");
         const rawFailuresByJob = localStorage.getItem(FAILURES_BY_JOB_EXPANDED_KEY);
         if (rawFailuresByJob !== null) setFailuresByJobExpanded(rawFailuresByJob === "true");
+        const rawFailuresPerDay = localStorage.getItem(FAILURES_PER_DAY_EXPANDED_KEY);
+        if (rawFailuresPerDay !== null) setFailuresPerDayExpanded(rawFailuresPerDay === "true");
       } catch {
         // ignore malformed/unavailable storage
       }
@@ -154,6 +158,18 @@ export default function DashboardPage() {
       const next = !prev;
       try {
         localStorage.setItem(FAILURES_BY_JOB_EXPANDED_KEY, String(next));
+      } catch {
+        // ignore unavailable storage
+      }
+      return next;
+    });
+  }
+
+  function toggleFailuresPerDayExpanded() {
+    setFailuresPerDayExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(FAILURES_PER_DAY_EXPANDED_KEY, String(next));
       } catch {
         // ignore unavailable storage
       }
@@ -386,10 +402,20 @@ export default function DashboardPage() {
         >
           {days !== 1 && (
             <div className="card p-4">
-              <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                Failures per day
-              </h2>
-              <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
+              <button
+                onClick={toggleFailuresPerDayExpanded}
+                className="mb-2 flex w-full items-center justify-between gap-2 text-left"
+              >
+                <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                  Failures per day
+                </h2>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  {failuresPerDayExpanded ? "▲ hide" : "▼ show"}
+                </span>
+              </button>
+              {failuresPerDayExpanded && (
+                <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
+              )}
             </div>
           )}
           {showFailuresByJobChart && (
