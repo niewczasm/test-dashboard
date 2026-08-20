@@ -35,6 +35,8 @@ function jobHealthPriority(job: JobDto): number {
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
 const DAYS_STORAGE_KEY = "dashboard-days-window";
+const LATEST_BUILDS_EXPANDED_KEY = "dashboard-latest-builds-expanded";
+const FAILURES_BY_JOB_EXPANDED_KEY = "dashboard-failures-by-job-expanded";
 
 type SortColumn = "test" | "job" | "failures" | "lastFailed";
 type SortDirection = "asc" | "desc";
@@ -95,6 +97,8 @@ export default function DashboardPage() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
+  const [latestBuildsExpanded, setLatestBuildsExpanded] = useState(true);
+  const [failuresByJobExpanded, setFailuresByJobExpanded] = useState(true);
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
@@ -122,8 +126,40 @@ export default function DashboardPage() {
       } catch {
         // ignore malformed/unavailable storage
       }
+      try {
+        const rawLatestBuilds = localStorage.getItem(LATEST_BUILDS_EXPANDED_KEY);
+        if (rawLatestBuilds !== null) setLatestBuildsExpanded(rawLatestBuilds === "true");
+        const rawFailuresByJob = localStorage.getItem(FAILURES_BY_JOB_EXPANDED_KEY);
+        if (rawFailuresByJob !== null) setFailuresByJobExpanded(rawFailuresByJob === "true");
+      } catch {
+        // ignore malformed/unavailable storage
+      }
     });
   }, []);
+
+  function toggleLatestBuildsExpanded() {
+    setLatestBuildsExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(LATEST_BUILDS_EXPANDED_KEY, String(next));
+      } catch {
+        // ignore unavailable storage
+      }
+      return next;
+    });
+  }
+
+  function toggleFailuresByJobExpanded() {
+    setFailuresByJobExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(FAILURES_BY_JOB_EXPANDED_KEY, String(next));
+      } catch {
+        // ignore unavailable storage
+      }
+      return next;
+    });
+  }
 
   function selectDays(d: number) {
     setDays(d);
@@ -257,23 +293,30 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile label="Failures in window" value={stats?.totalFailures ?? "–"} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatTile label={`Failures in ${windowLabel(days)}`} value={stats?.totalFailures ?? "–"} />
         <StatTile
           label="Unique failing tests"
           value={stats?.uniqueFailingTests ?? "–"}
           accent="var(--status-critical)"
         />
-        <StatTile label="Tracked jobs" value={jobs.filter((j) => j.enabled).length} />
       </div>
 
       {jobHealthList.length > 0 && (
         <div className="card overflow-hidden">
-          <div className="border-b p-4" style={{ borderColor: "var(--border)" }}>
+          <button
+            onClick={toggleLatestBuildsExpanded}
+            className="flex w-full items-center justify-between gap-2 p-4 text-left"
+            style={latestBuildsExpanded ? { borderBottom: "1px solid var(--border)" } : undefined}
+          >
             <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
               Latest build per job
             </h2>
-          </div>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {latestBuildsExpanded ? "▲ hide" : "▼ show"}
+            </span>
+          </button>
+          {latestBuildsExpanded && (
           <ul className="divide-y" style={{ borderColor: "var(--gridline)" }}>
             {jobHealthList.map((job) => (
               <li
@@ -333,6 +376,7 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
+          )}
         </div>
       )}
 
@@ -350,10 +394,18 @@ export default function DashboardPage() {
           )}
           {showFailuresByJobChart && (
             <div className="card p-4">
-              <h2 className="mb-2 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                Failures by job
-              </h2>
-              <FailuresByJobChart data={stats?.failuresByJob ?? []} />
+              <button
+                onClick={toggleFailuresByJobExpanded}
+                className="mb-2 flex w-full items-center justify-between gap-2 text-left"
+              >
+                <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                  Failures by job
+                </h2>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  {failuresByJobExpanded ? "▲ hide" : "▼ show"}
+                </span>
+              </button>
+              {failuresByJobExpanded && <FailuresByJobChart data={stats?.failuresByJob ?? []} />}
             </div>
           )}
         </div>
