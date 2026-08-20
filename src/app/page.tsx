@@ -14,6 +14,7 @@ const WINDOW_OPTIONS = [1, 7, 14, 30, 90];
 const windowLabel = (d: number) => (d === 1 ? "24h" : `${d}d`);
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
+const DAYS_STORAGE_KEY = "dashboard-days-window";
 
 type SortColumn = "test" | "job" | "failures" | "lastFailed";
 type SortDirection = "asc" | "desc";
@@ -78,9 +79,10 @@ export default function DashboardPage() {
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
 
-  // Read persisted column widths after mount only, so the server-rendered
-  // markup (which has no access to localStorage) matches the first client
-  // render and React doesn't complain about a hydration mismatch.
+  // Read persisted column widths / time window after mount only, so the
+  // server-rendered markup (which has no access to localStorage) matches
+  // the first client render and React doesn't complain about a hydration
+  // mismatch.
   useEffect(() => {
     queueMicrotask(() => {
       try {
@@ -89,8 +91,24 @@ export default function DashboardPage() {
       } catch {
         // ignore malformed/unavailable storage
       }
+      try {
+        const rawDays = Number(localStorage.getItem(DAYS_STORAGE_KEY));
+        if (WINDOW_OPTIONS.includes(rawDays)) setDays(rawDays);
+      } catch {
+        // ignore malformed/unavailable storage
+      }
     });
   }, []);
+
+  function selectDays(d: number) {
+    setDays(d);
+    setPage(1);
+    try {
+      localStorage.setItem(DAYS_STORAGE_KEY, String(d));
+    } catch {
+      // ignore unavailable storage
+    }
+  }
 
   useEffect(() => {
     fetch("/api/jobs")
@@ -189,10 +207,7 @@ export default function DashboardPage() {
             {WINDOW_OPTIONS.map((d) => (
               <button
                 key={d}
-                onClick={() => {
-                  setDays(d);
-                  setPage(1);
-                }}
+                onClick={() => selectDays(d)}
                 className="px-3 py-1.5"
                 style={{
                   background: days === d ? "var(--series-1)" : "transparent",
