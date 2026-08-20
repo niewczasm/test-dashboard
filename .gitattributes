@@ -1,0 +1,13 @@
+# Force LF everywhere regardless of the checking-out OS's git config
+# (core.autocrlf), so package-lock.json and source files don't show as
+# "changed" on Windows purely from line-ending differences.
+* text=auto eol=lf
+
+# Binary/opaque — never touch line endings, never diff-merge.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

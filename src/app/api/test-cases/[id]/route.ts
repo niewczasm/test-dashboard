@@ -30,6 +30,8 @@ interface FailureRow {
   status: string;
   errorMessage: string | null;
   stackTrace: string | null;
+  stdout: string | null;
+  stderr: string | null;
   duration: number | null;
   createdAt: string;
   buildId: string;
@@ -72,7 +74,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const failures = db
     .prepare(
       `SELECT
-         tf.id, tf.status, tf.errorMessage, tf.stackTrace, tf.duration, tf.createdAt,
+         tf.id, tf.status, tf.errorMessage, tf.stackTrace, tf.stdout, tf.stderr, tf.duration, tf.createdAt,
          b.id AS buildId, b.number AS buildNumber, b.result AS buildResult,
          b.timestamp AS buildTimestamp, b.url AS buildUrl
        FROM TestFailure tf
@@ -107,6 +109,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       status: f.status,
       errorMessage: f.errorMessage,
       stackTrace: f.stackTrace,
+      stdout: f.stdout,
+      stderr: f.stderr,
       duration: f.duration,
       createdAt: f.createdAt,
       build: {

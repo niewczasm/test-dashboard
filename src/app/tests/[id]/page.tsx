@@ -262,9 +262,35 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                         </pre>
                       </div>
                     )}
-                    {!f.errorMessage && !f.stackTrace && (
+                    {f.stdout && (
+                      <div>
+                        <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                          Standard output
+                        </div>
+                        <pre
+                          className="mt-1 max-h-80 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap"
+                          style={{ background: "var(--page)", color: "var(--text-primary)" }}
+                        >
+                          {f.stdout}
+                        </pre>
+                      </div>
+                    )}
+                    {f.stderr && (
+                      <div>
+                        <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                          Standard error
+                        </div>
+                        <pre
+                          className="mt-1 max-h-80 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap"
+                          style={{ background: "var(--page)", color: "var(--status-serious)" }}
+                        >
+                          {f.stderr}
+                        </pre>
+                      </div>
+                    )}
+                    {!f.errorMessage && !f.stackTrace && !f.stdout && !f.stderr && (
                       <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        Jenkins did not provide error details for this build.
+                        Jenkins did not provide error details, stdout, or stderr for this build.
                       </span>
                     )}
                   </div>

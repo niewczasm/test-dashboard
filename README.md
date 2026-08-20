@@ -33,8 +33,17 @@ builds, manual JIRA ticket assignment, and tagging of tests.
 1. Install dependencies:
 
    ```bash
-   npm install
+   npm ci
    ```
+
+   Use `npm ci` day-to-day (including after every `git pull`), not
+   `npm install` — `npm ci` installs exactly what's pinned in
+   `package-lock.json` and never rewrites it. Plain `npm install` can pick up
+   newer versions for any dependency pinned with `^` and silently rewrite the
+   lockfile, which is what makes `git pull` painful (local lockfile changes
+   colliding with incoming ones). Only use `npm install <pkg>` when you
+   actually mean to add or bump a dependency — that's a deliberate,
+   committed lockfile change, not drift.
 
 2. Fill in `.env`:
 
@@ -47,6 +56,17 @@ builds, manual JIRA ticket assignment, and tagging of tests.
 
    Generate the API token in Jenkins: user profile → *Configure* →
    *API Token* → *Add new Token*.
+
+   **If `package-lock.json` (or other files) keep showing as locally
+   modified right after a fresh `git pull`/clone** on Windows, it's almost
+   always CRLF line endings — `.gitattributes` in this repo forces LF, but
+   only for files checked out *after* it's present. One-time fix on an
+   existing checkout:
+
+   ```bash
+   git add --renormalize .
+   git status   # should now be clean; commit if it shows anything
+   ```
 
 3. Run the app — the SQLite database and its schema are created
    automatically on first run at the path in `DATABASE_URL` (default

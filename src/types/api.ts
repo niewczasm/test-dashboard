@@ -64,6 +64,8 @@ export interface TestFailureDto {
   status: string;
   errorMessage: string | null;
   stackTrace: string | null;
+  stdout: string | null;
+  stderr: string | null;
   duration: number | null;
   createdAt: string;
   build: BuildDto;

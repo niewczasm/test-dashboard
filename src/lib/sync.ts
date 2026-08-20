@@ -71,8 +71,8 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
     RETURNING id
   `);
   const insertFailure = db.prepare(`
-    INSERT INTO TestFailure (id, testCaseId, buildId, status, errorMessage, stackTrace, duration, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO TestFailure (id, testCaseId, buildId, status, errorMessage, stackTrace, stdout, stderr, duration, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (testCaseId, buildId) DO NOTHING
   `);
 
@@ -116,6 +116,8 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
           failure.status,
           failure.errorMessage,
           failure.stackTrace,
+          failure.stdout,
+          failure.stderr,
           failure.duration,
           nowIso()
         );

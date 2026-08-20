@@ -71,6 +71,8 @@ db.exec(`
     status TEXT NOT NULL,
     errorMessage TEXT,
     stackTrace TEXT,
+    stdout TEXT,
+    stderr TEXT,
     duration REAL,
     createdAt TEXT NOT NULL,
     UNIQUE (testCaseId, buildId)
@@ -114,6 +116,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_synclog_job_time ON SyncLog (jobId, startedAt);
 `);
+
+/**
+ * `CREATE TABLE IF NOT EXISTS` only helps on a fresh database — it's a
+ * no-op against a table that already exists from an older version of this
+ * app, so new columns need an explicit ALTER TABLE (SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, hence the manual existence check).
+ */
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn("TestFailure", "stdout", "TEXT");
+ensureColumn("TestFailure", "stderr", "TEXT");
 
 /** The subset of SQLite bind-parameter types this app actually uses. */
 export type SqlParam = string | number | null;

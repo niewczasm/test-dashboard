@@ -51,6 +51,8 @@ interface JenkinsTestCase {
   status: string;
   errorDetails?: string | null;
   errorStackTrace?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
   duration?: number;
 }
 
@@ -68,6 +70,8 @@ export interface ParsedTestFailure {
   status: string;
   errorMessage: string | null;
   stackTrace: string | null;
+  stdout: string | null;
+  stderr: string | null;
   duration: number | null;
 }
 
@@ -97,6 +101,8 @@ export async function fetchFailingTests(
         status: testCase.status,
         errorMessage: testCase.errorDetails ?? null,
         stackTrace: testCase.errorStackTrace ?? null,
+        stdout: testCase.stdout || null,
+        stderr: testCase.stderr || null,
         duration: typeof testCase.duration === "number" ? testCase.duration : null,
       });
     }
