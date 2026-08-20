@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { BuildFailureDto, JobBuildDto, JobDto, SyncLogDto } from "@/types/api";
+import type { BuildFailureDto, JobBuildDto, JobBuildsResponseDto, JobDto, SyncLogDto } from "@/types/api";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -299,8 +299,12 @@ function SyncLogPanel({ logs, loading }: { logs: SyncLogDto[]; loading: boolean 
   );
 }
 
+const STATUS_OPTIONS = ["SUCCESS", "UNSTABLE", "FAILURE", "ABORTED", "NOT_BUILT"];
+const BUILD_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 function BuildsPanel({ jobId }: { jobId: string }) {
   const [builds, setBuilds] = useState<JobBuildDto[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expandedBuildId, setExpandedBuildId] = useState<string | null>(null);
   const [buildFailures, setBuildFailures] = useState<BuildFailureDto[]>([]);
@@ -309,18 +313,39 @@ function BuildsPanel({ jobId }: { jobId: string }) {
   const [reasonText, setReasonText] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [statusFilter, setStatusFilter] = useState("");
+  const [invalidFilter, setInvalidFilter] = useState("");
+  const [hasFailuresFilter, setHasFailuresFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   function load() {
     setLoading(true);
-    fetch(`/api/jobs/${jobId}/builds`)
+    const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (statusFilter) qs.set("status", statusFilter);
+    if (invalidFilter) qs.set("invalid", invalidFilter);
+    if (hasFailuresFilter) qs.set("hasFailures", hasFailuresFilter);
+    fetch(`/api/jobs/${jobId}/builds?${qs}`)
       .then((r) => r.json())
-      .then(setBuilds)
+      .then((data: JobBuildsResponseDto) => {
+        setBuilds(data.builds);
+        setTotal(data.total);
+      })
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     queueMicrotask(load);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [jobId, statusFilter, invalidFilter, hasFailuresFilter, page, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
+
+  function updateFilter(setter: (v: string) => void, value: string) {
+    setter(value);
+    setPage(1);
+  }
 
   function toggleFailures(buildId: string) {
     if (expandedBuildId === buildId) {
@@ -366,32 +391,87 @@ function BuildsPanel({ jobId }: { jobId: string }) {
     }
   }
 
-  if (loading) {
-    return (
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        Loading builds…
-      </p>
-    );
-  }
-  if (builds.length === 0) {
-    return (
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        No builds synced yet.
-      </p>
-    );
-  }
+  const selectStyle = {
+    borderColor: "var(--border)",
+    background: "var(--surface-1)",
+  };
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-          Recent builds — mark a build invalid (e.g. infra outage causing mass failures) to
-          exclude its failures from dashboard stats. Full history stays visible here.
+          Mark a build invalid (e.g. infra outage causing mass failures) to exclude its
+          failures from dashboard stats. Full history stays visible here.
         </div>
         <button onClick={load} className="text-xs underline shrink-0" style={{ color: "var(--series-1)" }}>
           refresh
         </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <select
+          value={statusFilter}
+          onChange={(e) => updateFilter(setStatusFilter, e.target.value)}
+          className="rounded border px-1.5 py-1"
+          style={selectStyle}
+        >
+          <option value="">Any status</option>
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={invalidFilter}
+          onChange={(e) => updateFilter(setInvalidFilter, e.target.value)}
+          className="rounded border px-1.5 py-1"
+          style={selectStyle}
+        >
+          <option value="">Any validity</option>
+          <option value="false">Valid only</option>
+          <option value="true">Invalid only</option>
+        </select>
+        <select
+          value={hasFailuresFilter}
+          onChange={(e) => updateFilter(setHasFailuresFilter, e.target.value)}
+          className="rounded border px-1.5 py-1"
+          style={selectStyle}
+        >
+          <option value="">Any failures</option>
+          <option value="true">Has failed tests</option>
+          <option value="false">No failed tests</option>
+        </select>
+        <label className="ml-auto flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+          Rows per page
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="rounded border px-1.5 py-1"
+            style={selectStyle}
+          >
+            {BUILD_PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {loading ? (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Loading builds…
+        </p>
+      ) : builds.length === 0 ? (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          No builds match these filters.
+        </p>
+      ) : (
+        <>
       <ul className="flex flex-col gap-1.5">
         {builds.map((b) => (
           <li key={b.id} className="rounded-md border p-2" style={{ borderColor: "var(--gridline)" }}>
@@ -523,6 +603,51 @@ function BuildsPanel({ jobId }: { jobId: string }) {
           </li>
         ))}
       </ul>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+        <span>
+          Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, total)} of{" "}
+          {total}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPage(1)}
+            disabled={currentPage === 1}
+            className="rounded px-2 py-1 disabled:opacity-30"
+            style={{ color: "var(--series-1)" }}
+          >
+            « First
+          </button>
+          <button
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="rounded px-2 py-1 disabled:opacity-30"
+            style={{ color: "var(--series-1)" }}
+          >
+            ‹ Prev
+          </button>
+          <span className="px-2" style={{ color: "var(--text-secondary)" }}>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="rounded px-2 py-1 disabled:opacity-30"
+            style={{ color: "var(--series-1)" }}
+          >
+            Next ›
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className="rounded px-2 py-1 disabled:opacity-30"
+            style={{ color: "var(--series-1)" }}
+          >
+            Last »
+          </button>
+        </div>
+      </div>
+        </>
+      )}
     </div>
   );
 }

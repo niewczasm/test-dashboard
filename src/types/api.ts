@@ -73,6 +73,13 @@ export interface JobBuildDto {
   failureCount: number;
 }
 
+export interface JobBuildsResponseDto {
+  builds: JobBuildDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface BuildFailureDto {
   testCaseId: string;
   className: string;
