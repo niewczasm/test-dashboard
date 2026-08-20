@@ -28,8 +28,13 @@ const ALL_COLUMNS: { key: ColumnKey; label: string; sortable: boolean }[] = [
   { key: "tags", label: "Tags", sortable: false },
 ];
 
-const DEFAULT_WIDTHS: Record<ColumnKey, number> = {
-  test: 340,
+// "test" starts at `null` — meaning it's not pinned to a px width, it just
+// fills whatever space is left after the other five columns take what they
+// need. It becomes a fixed number the moment the user drags its handle.
+type ColumnWidths = { test: number | null } & Record<Exclude<ColumnKey, "test">, number>;
+
+const DEFAULT_WIDTHS: ColumnWidths = {
+  test: null,
   job: 140,
   failures: 90,
   lastFailed: 140,
@@ -68,7 +73,7 @@ export default function DashboardPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
-  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_WIDTHS);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidths>(DEFAULT_WIDTHS);
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
@@ -111,10 +116,15 @@ export default function DashboardPage() {
     }
   }
 
-  function startResize(column: ColumnKey, e: React.MouseEvent) {
+  function startResize(column: ColumnKey, e: React.MouseEvent<HTMLDivElement>) {
     e.preventDefault();
     const startX = e.clientX;
-    const startWidth = columnWidths[column];
+    // "test" may still be in its unset (auto-fill) state, with no pixel
+    // width to base the drag on yet — measure what it's actually rendered
+    // at right now and use that as the starting point.
+    const currentWidth = columnWidths[column];
+    const startWidth =
+      currentWidth ?? e.currentTarget.closest("th")?.getBoundingClientRect().width ?? MIN_WIDTHS[column];
 
     function onMove(ev: MouseEvent) {
       const next = Math.max(MIN_WIDTHS[column], startWidth + (ev.clientX - startX));
@@ -146,7 +156,14 @@ export default function DashboardPage() {
   const totalPages = Math.max(1, Math.ceil(sortedTests.length / pageSize));
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const pageTests = sortedTests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const tableWidth = ALL_COLUMNS.reduce((sum, c) => sum + columnWidths[c.key], 0);
+  // While "test" is still auto-fill (null), the table just fills its
+  // container and the browser hands that column whatever's left over. Once
+  // the user has pinned "test" to a width too, fall back to summing every
+  // column like the other resizable tables in this app do.
+  const tableWidth =
+    columnWidths.test === null
+      ? "100%"
+      : ALL_COLUMNS.reduce((sum, c) => sum + (columnWidths[c.key] ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -258,9 +275,10 @@ export default function DashboardPage() {
             style={{ width: tableWidth, tableLayout: "fixed", borderCollapse: "collapse" }}
           >
             <colgroup>
-              {ALL_COLUMNS.map((col) => (
-                <col key={col.key} style={{ width: columnWidths[col.key] }} />
-              ))}
+              {ALL_COLUMNS.map((col) => {
+                const width = columnWidths[col.key];
+                return <col key={col.key} style={width === null ? undefined : { width }} />;
+              })}
             </colgroup>
             <thead>
               <tr style={{ color: "var(--text-muted)" }}>
