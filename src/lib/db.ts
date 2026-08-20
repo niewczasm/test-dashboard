@@ -122,11 +122,22 @@ db.exec(`
  * no-op against a table that already exists from an older version of this
  * app, so new columns need an explicit ALTER TABLE (SQLite has no
  * `ADD COLUMN IF NOT EXISTS`, hence the manual existence check).
+ *
+ * The check-then-add isn't atomic across connections, and Next.js's build
+ * step imports this module from many separate worker processes at once —
+ * two of them can both see the column missing and both try to add it. The
+ * loser isn't wrong, it's just late, so swallow exactly that outcome.
  */
 function ensureColumn(table: string, column: string, definition: string) {
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-  if (!columns.some((c) => c.name === column)) {
+  if (columns.some((c) => c.name === column)) return;
+  try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("duplicate column name")) {
+      throw err;
+    }
   }
 }
 
