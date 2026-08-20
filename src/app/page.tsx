@@ -184,6 +184,17 @@ export default function DashboardPage() {
     });
   }
 
+  function expandBothCharts() {
+    setFailuresPerDayExpanded(true);
+    setFailuresByJobExpanded(true);
+    try {
+      localStorage.setItem(FAILURES_PER_DAY_EXPANDED_KEY, "true");
+      localStorage.setItem(FAILURES_BY_JOB_EXPANDED_KEY, "true");
+    } catch {
+      // ignore unavailable storage
+    }
+  }
+
   function selectDays(d: number) {
     setDays(d);
     setPage(1);
@@ -401,6 +412,17 @@ export default function DashboardPage() {
           </ul>
           )}
         </div>
+      )}
+
+      {(days !== 1 || showFailuresByJobChart) && hideChartsSection && (
+        <button
+          onClick={expandBothCharts}
+          className="card flex w-full items-center justify-between p-3 text-left text-xs"
+          style={{ color: "var(--text-muted)" }}
+        >
+          <span>Charts hidden (Failures per day, Failures by job)</span>
+          <span>▼ show</span>
+        </button>
       )}
 
       {(days !== 1 || showFailuresByJobChart) && !hideChartsSection && (
