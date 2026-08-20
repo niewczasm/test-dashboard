@@ -12,6 +12,26 @@ import { formatDistanceToNow } from "date-fns";
 
 const WINDOW_OPTIONS = [1, 7, 14, 30, 90];
 const windowLabel = (d: number) => (d === 1 ? "24h" : `${d}d`);
+
+function buildResultColor(result: string | null): string {
+  switch (result) {
+    case "SUCCESS":
+      return "var(--status-good)";
+    case "UNSTABLE":
+      return "var(--status-warning)";
+    case "FAILURE":
+      return "var(--status-critical)";
+    default:
+      return "var(--text-muted)";
+  }
+}
+
+/** Surfaces broken/unstable jobs first, then never-synced ones, healthy jobs last. */
+function jobHealthPriority(job: JobDto): number {
+  if (!job.latestBuild) return 1;
+  if (job.latestBuild.result === "SUCCESS") return 2;
+  return 0;
+}
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
 const DAYS_STORAGE_KEY = "dashboard-days-window";
@@ -78,6 +98,10 @@ export default function DashboardPage() {
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
+  const jobHealthList = [...jobs].sort((a, b) => {
+    const diff = jobHealthPriority(a) - jobHealthPriority(b);
+    return diff !== 0 ? diff : a.name.localeCompare(b.name);
+  });
 
   // Read persisted column widths / time window after mount only, so the
   // server-rendered markup (which has no access to localStorage) matches
@@ -241,6 +265,75 @@ export default function DashboardPage() {
         />
         <StatTile label="Tracked jobs" value={jobs.filter((j) => j.enabled).length} />
       </div>
+
+      {jobHealthList.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="border-b p-4" style={{ borderColor: "var(--border)" }}>
+            <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+              Latest build per job
+            </h2>
+          </div>
+          <ul className="divide-y" style={{ borderColor: "var(--gridline)" }}>
+            {jobHealthList.map((job) => (
+              <li
+                key={job.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"
+              >
+                <Link
+                  href="/jobs"
+                  className="truncate font-medium hover:underline"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {job.name}
+                </Link>
+                {job.latestBuild ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={job.latestBuild.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs underline"
+                      style={{ color: "var(--series-1)" }}
+                    >
+                      #{job.latestBuild.number}
+                    </a>
+                    <span
+                      className="rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+                      style={{ background: buildResultColor(job.latestBuild.result) }}
+                    >
+                      {job.latestBuild.result ?? "?"}
+                    </span>
+                    {job.latestBuild.failureCount > 0 && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-semibold text-white"
+                        style={{ background: "var(--status-critical)" }}
+                      >
+                        {job.latestBuild.failureCount} failed
+                      </span>
+                    )}
+                    {job.latestBuild.invalid && (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-xs font-semibold"
+                        style={{ background: "var(--gridline)", color: "var(--text-secondary)" }}
+                        title="This build is marked invalid and excluded from stats"
+                      >
+                        INVALID
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {formatDistanceToNow(new Date(job.latestBuild.timestamp), { addSuffix: true })}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    no builds synced yet
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="card p-4">

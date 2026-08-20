@@ -8,6 +8,15 @@ export interface JobDto {
   lastSyncError: string | null;
   createdAt: string;
   _count: { testCases: number };
+  latestBuild: {
+    id: string;
+    number: number;
+    result: string | null;
+    timestamp: string;
+    url: string;
+    invalid: boolean;
+    failureCount: number;
+  } | null;
 }
 
 export interface SyncLogDto {
