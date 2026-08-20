@@ -11,18 +11,40 @@ interface SyncLogRow {
   newFailures: number;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: jobId } = await params;
+
+  const page = Math.max(1, Number(req.nextUrl.searchParams.get("page") ?? "1") || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, Number(req.nextUrl.searchParams.get("pageSize") ?? "20") || 20)
+  );
+  const status = req.nextUrl.searchParams.get("status"); // "ok" | "error" | null
+
+  const where: string[] = ["jobId = ?"];
+  const params_: (string | number)[] = [jobId];
+  if (status === "ok") {
+    where.push("success = 1");
+  } else if (status === "error") {
+    where.push("success = 0");
+  }
+  const whereClause = where.join(" AND ");
+
+  const total = (
+    db.prepare(`SELECT COUNT(*) AS count FROM SyncLog WHERE ${whereClause}`).get(...params_) as {
+      count: number;
+    }
+  ).count;
 
   const rows = db
     .prepare(
       `SELECT id, startedAt, finishedAt, success, message, newBuilds, newFailures
        FROM SyncLog
-       WHERE jobId = ?
+       WHERE ${whereClause}
        ORDER BY startedAt DESC
-       LIMIT 50`
+       LIMIT ? OFFSET ?`
     )
-    .all(jobId) as unknown as SyncLogRow[];
+    .all(...params_, pageSize, (page - 1) * pageSize) as unknown as SyncLogRow[];
 
   const logs = rows.map((r) => ({
     id: r.id,
@@ -34,5 +56,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     newFailures: r.newFailures,
   }));
 
-  return NextResponse.json(logs);
+  return NextResponse.json({ logs, total, page, pageSize });
 }

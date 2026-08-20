@@ -29,6 +29,13 @@ export interface SyncLogDto {
   newFailures: number;
 }
 
+export interface SyncLogsResponseDto {
+  logs: SyncLogDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface TagDto {
   id: string;
   name: string;

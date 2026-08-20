@@ -1,7 +1,14 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import type { BuildFailureDto, JobBuildDto, JobBuildsResponseDto, JobDto, SyncLogDto } from "@/types/api";
+import type {
+  BuildFailureDto,
+  JobBuildDto,
+  JobBuildsResponseDto,
+  JobDto,
+  SyncLogDto,
+  SyncLogsResponseDto,
+} from "@/types/api";
 import Link from "next/link";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -17,8 +24,7 @@ export default function JobsPage() {
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
-  const [logs, setLogs] = useState<SyncLogDto[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsRefreshKey, setLogsRefreshKey] = useState(0);
 
   function load() {
     fetch("/api/jobs")
@@ -28,14 +34,6 @@ export default function JobsPage() {
 
   useEffect(load, []);
 
-  function loadLogs(jobId: string) {
-    setLogsLoading(true);
-    fetch(`/api/jobs/${jobId}/logs`)
-      .then((r) => r.json())
-      .then(setLogs)
-      .finally(() => setLogsLoading(false));
-  }
-
   function togglePanel(jobId: string, which: Exclude<Panel, null>) {
     if (expandedJobId === jobId && panel === which) {
       setExpandedJobId(null);
@@ -44,7 +42,6 @@ export default function JobsPage() {
     }
     setExpandedJobId(jobId);
     setPanel(which);
-    if (which === "logs") loadLogs(jobId);
   }
 
   async function addJob(e: React.FormEvent) {
@@ -99,7 +96,7 @@ export default function JobsPage() {
       }
       load();
       if (expandedJobId === job.id && panel === "logs") {
-        loadLogs(job.id);
+        setLogsRefreshKey((k) => k + 1);
       }
     } finally {
       setSyncingId(null);
@@ -232,7 +229,9 @@ export default function JobsPage() {
                 {expandedJobId === job.id && (
                   <tr className="border-t" style={{ borderColor: "var(--gridline)" }}>
                     <td colSpan={6} className="px-4 py-3" style={{ background: "var(--page)" }}>
-                      {panel === "logs" && <SyncLogPanel logs={logs} loading={logsLoading} />}
+                      {panel === "logs" && (
+                        <SyncLogPanel jobId={job.id} refreshSignal={logsRefreshKey} />
+                      )}
                       {panel === "builds" && <BuildsPanel jobId={job.id} />}
                     </td>
                   </tr>
@@ -259,42 +258,167 @@ export default function JobsPage() {
   );
 }
 
-function SyncLogPanel({ logs, loading }: { logs: SyncLogDto[]; loading: boolean }) {
-  if (loading) {
-    return (
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        Loading sync history…
-      </p>
-    );
+const LOG_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+function SyncLogPanel({ jobId, refreshSignal }: { jobId: string; refreshSignal: number }) {
+  const [logs, setLogs] = useState<SyncLogDto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  function load() {
+    setLoading(true);
+    const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (statusFilter) qs.set("status", statusFilter);
+    fetch(`/api/jobs/${jobId}/logs?${qs}`)
+      .then((r) => r.json())
+      .then((data: SyncLogsResponseDto) => {
+        setLogs(data.logs);
+        setTotal(data.total);
+      })
+      .finally(() => setLoading(false));
   }
-  if (logs.length === 0) {
-    return (
-      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-        No sync attempts recorded yet — hit &quot;sync&quot; to trigger one.
-      </p>
-    );
+
+  useEffect(() => {
+    queueMicrotask(load);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, statusFilter, page, pageSize, refreshSignal]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
+
+  function updateFilter(value: string) {
+    setStatusFilter(value);
+    setPage(1);
   }
+
+  const selectStyle = {
+    borderColor: "var(--border)",
+    background: "var(--surface-1)",
+  };
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-        Sync history (most recent first)
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Sync history (most recent first)
+        </div>
+        <button onClick={load} className="text-xs underline shrink-0" style={{ color: "var(--series-1)" }}>
+          refresh
+        </button>
       </div>
-      <ul className="flex flex-col gap-1.5">
-        {logs.map((log) => (
-          <li key={log.id} className="flex items-start gap-2 text-xs">
-            <span
-              className="mt-0.5 rounded px-1.5 py-0.5 font-semibold text-white shrink-0"
-              style={{ background: log.success ? "var(--status-good)" : "var(--status-critical)" }}
-            >
-              {log.success ? "OK" : "ERROR"}
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <select
+          value={statusFilter}
+          onChange={(e) => updateFilter(e.target.value)}
+          className="rounded border px-1.5 py-1"
+          style={selectStyle}
+        >
+          <option value="">Any status</option>
+          <option value="ok">OK</option>
+          <option value="error">NOT OK</option>
+        </select>
+        <label className="ml-auto flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+          Rows per page
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="rounded border px-1.5 py-1"
+            style={selectStyle}
+          >
+            {LOG_PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {loading ? (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Loading sync history…
+        </p>
+      ) : logs.length === 0 ? (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          {statusFilter
+            ? "No sync attempts match this filter."
+            : 'No sync attempts recorded yet — hit "sync" to trigger one.'}
+        </p>
+      ) : (
+        <>
+          <ul className="flex flex-col gap-1.5">
+            {logs.map((log) => (
+              <li key={log.id} className="flex items-start gap-2 text-xs">
+                <span
+                  className="mt-0.5 rounded px-1.5 py-0.5 font-semibold text-white shrink-0"
+                  style={{
+                    background: log.success ? "var(--status-good)" : "var(--status-critical)",
+                  }}
+                >
+                  {log.success ? "OK" : "ERROR"}
+                </span>
+                <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
+                  {format(new Date(log.startedAt), "d MMM yyyy, HH:mm:ss")}
+                </span>
+                <span style={{ color: "var(--text-primary)" }}>{log.message}</span>
+              </li>
+            ))}
+          </ul>
+          <div
+            className="flex flex-wrap items-center justify-between gap-2 text-xs"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <span>
+              Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, total)} of{" "}
+              {total}
             </span>
-            <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
-              {format(new Date(log.startedAt), "d MMM yyyy, HH:mm:ss")}
-            </span>
-            <span style={{ color: "var(--text-primary)" }}>{log.message}</span>
-          </li>
-        ))}
-      </ul>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(1)}
+                disabled={currentPage === 1}
+                className="rounded px-2 py-1 disabled:opacity-30"
+                style={{ color: "var(--series-1)" }}
+              >
+                « First
+              </button>
+              <button
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="rounded px-2 py-1 disabled:opacity-30"
+                style={{ color: "var(--series-1)" }}
+              >
+                ‹ Prev
+              </button>
+              <span className="px-2" style={{ color: "var(--text-secondary)" }}>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="rounded px-2 py-1 disabled:opacity-30"
+                style={{ color: "var(--series-1)" }}
+              >
+                Next ›
+              </button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="rounded px-2 py-1 disabled:opacity-30"
+                style={{ color: "var(--series-1)" }}
+              >
+                Last »
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

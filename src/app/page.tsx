@@ -53,6 +53,14 @@ const WINDOW_MODE_STORAGE_KEY = "dashboard-window-mode";
 const LATEST_BUILDS_EXPANDED_KEY = "dashboard-latest-builds-expanded";
 const FAILURES_BY_JOB_EXPANDED_KEY = "dashboard-failures-by-job-expanded";
 const FAILURES_PER_DAY_EXPANDED_KEY = "dashboard-failures-per-day-expanded";
+const HIDE_RESOLVED_STORAGE_KEY = "dashboard-hide-resolved-tests";
+
+/** Ticket is closed and the test hasn't actually failed again since — a stale
+ *  data point rather than a live problem, so it's worth setting apart from
+ *  tests that still need attention. */
+function isResolvedTest(t: TopFailingTestDto): boolean {
+  return t.ticket?.jiraStatusCategory === "done" && !t.ticketRegressedAfterFix;
+}
 
 type SortColumn = "test" | "job" | "failures" | "lastFailed";
 type SortDirection = "asc" | "desc";
@@ -118,6 +126,7 @@ export default function DashboardPage() {
   const [latestBuildsExpanded, setLatestBuildsExpanded] = useState(true);
   const [failuresByJobExpanded, setFailuresByJobExpanded] = useState(true);
   const [failuresPerDayExpanded, setFailuresPerDayExpanded] = useState(true);
+  const [hideResolvedTests, setHideResolvedTests] = useState(false);
   // Stays false until the localStorage read below resolves, so the very
   // first stats fetch already uses the persisted time window instead of
   // firing once with the default (30d) and again moments later with the
@@ -174,6 +183,8 @@ export default function DashboardPage() {
         if (rawFailuresByJob !== null) setFailuresByJobExpanded(rawFailuresByJob === "true");
         const rawFailuresPerDay = localStorage.getItem(FAILURES_PER_DAY_EXPANDED_KEY);
         if (rawFailuresPerDay !== null) setFailuresPerDayExpanded(rawFailuresPerDay === "true");
+        const rawHideResolved = localStorage.getItem(HIDE_RESOLVED_STORAGE_KEY);
+        if (rawHideResolved !== null) setHideResolvedTests(rawHideResolved === "true");
       } catch {
         // ignore malformed/unavailable storage
       }
@@ -212,6 +223,19 @@ export default function DashboardPage() {
       } catch {
         // ignore unavailable storage
       }
+      return next;
+    });
+  }
+
+  function toggleHideResolvedTests() {
+    setHideResolvedTests((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(HIDE_RESOLVED_STORAGE_KEY, String(next));
+      } catch {
+        // ignore unavailable storage
+      }
+      setPage(1);
       return next;
     });
   }
@@ -306,7 +330,10 @@ export default function DashboardPage() {
     document.addEventListener("mouseup", onUp);
   }
 
-  const sortedTests = [...(stats?.topFailingTests ?? [])].sort((a, b) => {
+  const allTests = stats?.topFailingTests ?? [];
+  const resolvedCount = allTests.filter(isResolvedTest).length;
+  const visibleTests = hideResolvedTests ? allTests.filter((t) => !isResolvedTest(t)) : allTests;
+  const sortedTests = [...visibleTests].sort((a, b) => {
     const av = sortValue(a, jenkinsPathByJobId.get(a.jobId) ?? "", sortColumn);
     const bv = sortValue(b, jenkinsPathByJobId.get(b.jobId) ?? "", sortColumn);
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
@@ -573,6 +600,17 @@ export default function DashboardPage() {
           <h2 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
             Most frequently failing tests
           </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            {resolvedCount > 0 && (
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+                <input
+                  type="checkbox"
+                  checked={hideResolvedTests}
+                  onChange={toggleHideResolvedTests}
+                />
+                Hide resolved ({resolvedCount})
+              </label>
+            )}
           <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
             Rows per page
             <select
@@ -591,6 +629,7 @@ export default function DashboardPage() {
               ))}
             </select>
           </label>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table
@@ -639,8 +678,13 @@ export default function DashboardPage() {
                 const jenkinsPath = jenkinsPathByJobId.get(t.jobId) ?? "";
                 const shortTestName = shortenTestIdentifier(t.testName, jenkinsPath);
                 const shortClassName = shortenTestIdentifier(t.className, jenkinsPath);
+                const resolved = isResolvedTest(t);
                 return (
-                  <tr key={t.testCaseId} className="border-t" style={{ borderColor: "var(--gridline)" }}>
+                  <tr
+                    key={t.testCaseId}
+                    className="border-t"
+                    style={{ borderColor: "var(--gridline)", opacity: resolved ? 0.55 : 1 }}
+                  >
                     <td className="overflow-hidden px-4 py-2">
                       <Link
                         href={`/tests/${t.testCaseId}`}
@@ -687,6 +731,15 @@ export default function DashboardPage() {
                               title={`Test failed again after the ticket was marked ${t.ticket.jiraStatus ?? "done"}`}
                             >
                               ⚠️
+                            </span>
+                          )}
+                          {resolved && (
+                            <span
+                              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                              style={{ background: "var(--gridline)", color: "var(--text-muted)" }}
+                              title={`Ticket ${t.ticket.jiraStatus ?? "resolved"} — no failures since it was closed`}
+                            >
+                              resolved
                             </span>
                           )}
                           {t.ticket.url ? (
