@@ -1,5 +1,6 @@
 import { db, newId, nowIso } from "@/lib/db";
 import { fetchFailingTests, fetchRecentBuilds } from "@/lib/jenkins";
+import { describeError } from "@/lib/errors";
 
 export interface JobSyncResult {
   jobId: string;
@@ -16,8 +17,32 @@ interface JobRow {
   lastSyncedBuild: number | null;
 }
 
+const MAX_LOG_ENTRIES_PER_JOB = 50;
+
+function writeSyncLog(
+  jobId: string,
+  startedAt: string,
+  success: boolean,
+  message: string,
+  newBuilds: number,
+  newFailures: number
+) {
+  db.prepare(
+    `INSERT INTO SyncLog (id, jobId, startedAt, finishedAt, success, message, newBuilds, newFailures)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(newId(), jobId, startedAt, nowIso(), success ? 1 : 0, message, newBuilds, newFailures);
+
+  // Keep the log bounded — this is a debugging aid, not an audit trail.
+  db.prepare(
+    `DELETE FROM SyncLog
+     WHERE jobId = ?
+       AND id NOT IN (SELECT id FROM SyncLog WHERE jobId = ? ORDER BY startedAt DESC LIMIT ?)`
+  ).run(jobId, jobId, MAX_LOG_ENTRIES_PER_JOB);
+}
+
 /** Pulls recent builds for one job, stores newly-seen builds and their failing tests. */
 export async function syncJob(jobId: string): Promise<JobSyncResult> {
+  const startedAt = nowIso();
   const job = db
     .prepare("SELECT id, name, jenkinsPath, lastSyncedBuild FROM Job WHERE id = ?")
     .get(jobId) as JobRow | undefined;
@@ -103,14 +128,25 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
     db.prepare(
       "UPDATE Job SET lastSyncedBuild = ?, lastSyncAt = ?, lastSyncError = NULL WHERE id = ?"
     ).run(highestProcessed, nowIso(), job.id);
+
+    let message: string;
+    if (builds.length === 0) {
+      message = "Jenkins returned no builds at all for this job path — double-check the path is correct.";
+    } else if (toProcess.length === 0) {
+      message = `Up to date — latest known build is #${known}, Jenkins has ${builds.length} recent build(s) but none newer (or still running).`;
+    } else {
+      message = `Synced ${result.newBuilds} new build(s), found ${result.newFailures} new failure(s).`;
+    }
+    writeSyncLog(job.id, startedAt, true, message, result.newBuilds, result.newFailures);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = describeError(err);
     result.error = message;
     db.prepare("UPDATE Job SET lastSyncAt = ?, lastSyncError = ? WHERE id = ?").run(
       nowIso(),
       message,
       job.id
     );
+    writeSyncLog(job.id, startedAt, false, message, result.newBuilds, result.newFailures);
   }
 
   return result;

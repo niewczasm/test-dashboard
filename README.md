@@ -23,7 +23,12 @@ builds, manual JIRA ticket assignment, and tagging of tests.
 
 > Requires **Node.js 22.5+** — that's the version `node:sqlite` shipped in.
 > `docker compose`/`Dockerfile` already pin a Node 22 image, so this only
-> matters for running the app directly on your machine.
+> matters for running the app directly on your machine. `npm run dev` /
+> `build` / `start` check this automatically and fail with a clear message
+> if your Node is too old — if you instead see
+> `Failed to load external module node:sqlite: Error [ERR_UNKNOWN_BUILTIN_MODULE]`,
+> that's this: run `node -v` and upgrade if it's below 22.5 (common on
+> Windows machines still on an older LTS like 18 or 20).
 
 1. Install dependencies:
 
@@ -123,6 +128,40 @@ block. Points worth adjusting:
   labels, exposing container port `3000`.
 - The container has no built-in HTTPS — terminate TLS at your reverse
   proxy/load balancer in front of it.
+
+### Native Windows containers
+
+`Dockerfile` + `docker-compose.yml` above build a **Linux** container image.
+That already runs fine under Docker Desktop on Windows in its default mode
+(Linux containers via WSL2) — no changes needed for that case.
+
+If your hosts instead run **native Windows containers** (Docker switched to
+"Windows containers" mode, no Linux/WSL2 involved), use `Dockerfile.windows`
+and `docker-compose.windows.yml` instead:
+
+```powershell
+docker compose -f docker-compose.windows.yml up -d --build
+```
+
+Two things that are specific to Windows containers and worth knowing before
+you rely on this:
+
+- **Host/image OS build must match.** `Dockerfile.windows` targets
+  `nanoserver-ltsc2022` (Windows Server 2022). If your hosts run a different
+  Windows Server build, the image won't start unless you either retag every
+  `nanoserver-ltsc2022` reference to match, or run with
+  `docker run --isolation=hyperv` (Hyper-V isolation tolerates a mismatch;
+  process isolation, the default, does not).
+- **Not verified end-to-end here** — this repo was built and Docker-tested
+  in a Linux sandbox, which cannot build or run Windows containers at all
+  (it's a different container runtime, not just a config flag). The
+  Windows Dockerfile follows Microsoft's/Node's documented patterns for
+  `node:*-nanoserver-*` images, but test it on an actual Windows container
+  host before depending on it.
+
+Everything else — the app code, the `node:sqlite` database, the sync logic —
+is unmodified; only the OS layer and a couple of Windows-specific Dockerfile
+mechanics differ (see the comments in `Dockerfile.windows`).
 
 ## How it works
 

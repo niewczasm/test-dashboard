@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+#
+# Native Windows container build — requires a Windows host with the
+# "Containers" feature enabled and Docker configured for Windows containers
+# (Docker Desktop: right-click the tray icon -> "Switch to Windows containers").
+# This is NOT the same as running the regular ./Dockerfile via Docker
+# Desktop's default Linux/WSL2 mode — that one already works unmodified on
+# Windows and needs none of this.
+#
+# IMAGE-TAG / HOST-OS MATCHING (the #1 thing that breaks this):
+# Windows containers require the container base image version to match the
+# host's Windows build, unless the host also has Hyper-V isolation available
+# (`docker run --isolation=hyperv`). The tag below targets Windows Server
+# 2022 (ltsc2022). If your hosts run a different build, swap every
+# `nanoserver-ltsc2022` below for the matching tag (e.g. `ltsc2019`,
+# `1809`) — see https://hub.docker.com/_/microsoft-windows-nanoserver for
+# the version table.
+
+FROM node:22-nanoserver-ltsc2022 AS deps
+WORKDIR C:\app
+COPY package.json package-lock.json .
+RUN npm ci
+
+FROM node:22-nanoserver-ltsc2022 AS builder
+WORKDIR C:\app
+COPY --from=deps C:\app\node_modules .\node_modules
+COPY . .
+RUN npm run build
+
+FROM node:22-nanoserver-ltsc2022 AS runner
+WORKDIR C:\app
+ENV NODE_ENV=production
+
+COPY --from=builder C:\app\node_modules .\node_modules
+COPY --from=builder C:\app\.next .\.next
+COPY --from=builder C:\app\public .\public
+COPY --from=builder C:\app\next.config.ts .\next.config.ts
+COPY --from=builder C:\app\package.json .\package.json
+
+# SQLite database lives here — mount a volume at C:\data so it survives
+# rebuilds/restarts (see the `docker run -v` / compose examples in README).
+RUN mkdir C:\data
+
+# Nanoserver images default to the ContainerAdministrator user. Dropping to
+# the built-in low-privilege ContainerUser (like the Linux image drops to a
+# non-root user) needs an explicit ACL grant first, since ContainerUser has
+# no write access to C:\data otherwise:
+# RUN icacls C:\data /grant ContainerUser:(OI)(CI)F
+# USER ContainerUser
+
+# Forward slashes here (not C:\data\prod.db) sidestep Dockerfile's
+# backslash-as-escape-character parsing inside a quoted ENV value — Windows
+# and Node.js both accept "/" as a path separator just fine.
+ENV DATABASE_URL="file:C:/data/prod.db"
+EXPOSE 3000
+
+# Shell form on purpose: nanoserver's default shell (cmd.exe) resolves
+# npx.cmd/next.cmd through PATHEXT the way exec-form (JSON array) CMD cannot.
+CMD npx next start -p 3000 -H 0.0.0.0

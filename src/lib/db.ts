@@ -101,6 +101,18 @@ db.exec(`
     assignedAt TEXT NOT NULL,
     PRIMARY KEY (testCaseId, tagId)
   );
+
+  CREATE TABLE IF NOT EXISTS SyncLog (
+    id TEXT PRIMARY KEY,
+    jobId TEXT NOT NULL REFERENCES Job(id) ON DELETE CASCADE,
+    startedAt TEXT NOT NULL,
+    finishedAt TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    newBuilds INTEGER NOT NULL DEFAULT 0,
+    newFailures INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_synclog_job_time ON SyncLog (jobId, startedAt);
 `);
 
 /** The subset of SQLite bind-parameter types this app actually uses. */

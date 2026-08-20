@@ -10,6 +10,16 @@ export interface JobDto {
   _count: { testCases: number };
 }
 
+export interface SyncLogDto {
+  id: string;
+  startedAt: string;
+  finishedAt: string;
+  success: boolean;
+  message: string;
+  newBuilds: number;
+  newFailures: number;
+}
+
 export interface TagDto {
   id: string;
   name: string;

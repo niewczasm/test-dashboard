@@ -1,0 +1,20 @@
+# For a Windows host running native Windows containers (Docker switched to
+# "Windows containers" mode). Use with: docker compose -f docker-compose.windows.yml up -d --build
+services:
+  test-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.windows
+    ports:
+      - "3000:3000"
+    environment:
+      JENKINS_URL: "https://jenkins.yourcompany.com"
+      JENKINS_USER: "your-jenkins-username"
+      JENKINS_API_TOKEN: "your-jenkins-api-token"
+      SYNC_INTERVAL_MINUTES: "15"
+    volumes:
+      - dashboard-data:C:\data
+    restart: unless-stopped
+
+volumes:
+  dashboard-data:

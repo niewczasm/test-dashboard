@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { JobDto } from "@/types/api";
-import { formatDistanceToNow } from "date-fns";
+import { Fragment, useEffect, useState } from "react";
+import type { JobDto, SyncLogDto } from "@/types/api";
+import { formatDistanceToNow, format } from "date-fns";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobDto[]>([]);
@@ -12,6 +12,10 @@ export default function JobsPage() {
   const [saving, setSaving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
 
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<SyncLogDto[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
   function load() {
     fetch("/api/jobs")
       .then((r) => r.json())
@@ -19,6 +23,24 @@ export default function JobsPage() {
   }
 
   useEffect(load, []);
+
+  function loadLogs(jobId: string) {
+    setLogsLoading(true);
+    fetch(`/api/jobs/${jobId}/logs`)
+      .then((r) => r.json())
+      .then(setLogs)
+      .finally(() => setLogsLoading(false));
+  }
+
+  function toggleLogs(jobId: string) {
+    if (expandedJobId === jobId) {
+      setExpandedJobId(null);
+      setLogs([]);
+      return;
+    }
+    setExpandedJobId(jobId);
+    loadLogs(jobId);
+  }
 
   async function addJob(e: React.FormEvent) {
     e.preventDefault();
@@ -55,6 +77,10 @@ export default function JobsPage() {
   async function removeJob(job: JobDto) {
     if (!confirm(`Delete job "${job.name}" and all related data (tests, failures, tickets)?`)) return;
     await fetch(`/api/jobs/${job.id}`, { method: "DELETE" });
+    if (expandedJobId === job.id) {
+      setExpandedJobId(null);
+      setLogs([]);
+    }
     load();
   }
 
@@ -67,6 +93,9 @@ export default function JobsPage() {
         alert(data.error ?? "Sync failed");
       }
       load();
+      if (expandedJobId === job.id) {
+        loadLogs(job.id);
+      }
     } finally {
       setSyncingId(null);
     }
@@ -132,54 +161,70 @@ export default function JobsPage() {
           </thead>
           <tbody>
             {jobs.map((job) => (
-              <tr key={job.id} className="border-t" style={{ borderColor: "var(--gridline)" }}>
-                <td className="px-4 py-2 font-medium">{job.name}</td>
-                <td className="px-4 py-2 font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
-                  {job.jenkinsPath}
-                </td>
-                <td className="px-4 py-2">{job._count.testCases}</td>
-                <td className="px-4 py-2" style={{ color: "var(--text-secondary)" }}>
-                  {job.lastSyncAt
-                    ? formatDistanceToNow(new Date(job.lastSyncAt), { addSuffix: true })
-                    : "never"}
-                  {job.lastSyncError && (
-                    <div className="text-xs" style={{ color: "var(--status-critical)" }}>
-                      {job.lastSyncError}
+              <Fragment key={job.id}>
+                <tr className="border-t" style={{ borderColor: "var(--gridline)" }}>
+                  <td className="px-4 py-2 font-medium">{job.name}</td>
+                  <td className="px-4 py-2 font-mono text-xs" style={{ color: "var(--text-secondary)" }}>
+                    {job.jenkinsPath}
+                  </td>
+                  <td className="px-4 py-2">{job._count.testCases}</td>
+                  <td className="px-4 py-2" style={{ color: "var(--text-secondary)" }}>
+                    {job.lastSyncAt
+                      ? formatDistanceToNow(new Date(job.lastSyncAt), { addSuffix: true })
+                      : "never"}
+                    {job.lastSyncError && (
+                      <div className="text-xs" style={{ color: "var(--status-critical)" }}>
+                        {job.lastSyncError}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => toggleEnabled(job)}
+                      className="rounded-full px-2 py-0.5 text-xs font-medium"
+                      style={{
+                        background: job.enabled ? "var(--status-good)" : "var(--gridline)",
+                        color: job.enabled ? "#fff" : "var(--text-secondary)",
+                      }}
+                    >
+                      {job.enabled ? "enabled" : "disabled"}
+                    </button>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => syncOne(job)}
+                        disabled={syncingId === job.id}
+                        className="text-xs underline disabled:opacity-60"
+                        style={{ color: "var(--series-1)" }}
+                      >
+                        {syncingId === job.id ? "syncing…" : "sync"}
+                      </button>
+                      <button
+                        onClick={() => toggleLogs(job.id)}
+                        className="text-xs underline"
+                        style={{ color: "var(--series-1)" }}
+                      >
+                        {expandedJobId === job.id ? "hide logs" : "logs"}
+                      </button>
+                      <button
+                        onClick={() => removeJob(job)}
+                        className="text-xs underline"
+                        style={{ color: "var(--status-critical)" }}
+                      >
+                        delete
+                      </button>
                     </div>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  <button
-                    onClick={() => toggleEnabled(job)}
-                    className="rounded-full px-2 py-0.5 text-xs font-medium"
-                    style={{
-                      background: job.enabled ? "var(--status-good)" : "var(--gridline)",
-                      color: job.enabled ? "#fff" : "var(--text-secondary)",
-                    }}
-                  >
-                    {job.enabled ? "enabled" : "disabled"}
-                  </button>
-                </td>
-                <td className="px-4 py-2">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => syncOne(job)}
-                      disabled={syncingId === job.id}
-                      className="text-xs underline disabled:opacity-60"
-                      style={{ color: "var(--series-1)" }}
-                    >
-                      {syncingId === job.id ? "syncing…" : "sync"}
-                    </button>
-                    <button
-                      onClick={() => removeJob(job)}
-                      className="text-xs underline"
-                      style={{ color: "var(--status-critical)" }}
-                    >
-                      delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+                {expandedJobId === job.id && (
+                  <tr className="border-t" style={{ borderColor: "var(--gridline)" }}>
+                    <td colSpan={6} className="px-4 py-3" style={{ background: "var(--page)" }}>
+                      <SyncLogPanel logs={logs} loading={logsLoading} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {jobs.length === 0 && (
               <tr>
@@ -197,6 +242,46 @@ export default function JobsPage() {
         <code>https://jenkins/job/team/job/my-tests/</code> use <code>team/my-tests</code>.
         The Jenkins connection (URL, user, token) is configured in the <code>.env</code> file.
       </p>
+    </div>
+  );
+}
+
+function SyncLogPanel({ logs, loading }: { logs: SyncLogDto[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        Loading sync history…
+      </p>
+    );
+  }
+  if (logs.length === 0) {
+    return (
+      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+        No sync attempts recorded yet — hit &quot;sync&quot; to trigger one.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        Sync history (most recent first)
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {logs.map((log) => (
+          <li key={log.id} className="flex items-start gap-2 text-xs">
+            <span
+              className="mt-0.5 rounded px-1.5 py-0.5 font-semibold text-white shrink-0"
+              style={{ background: log.success ? "var(--status-good)" : "var(--status-critical)" }}
+            >
+              {log.success ? "OK" : "ERROR"}
+            </span>
+            <span className="shrink-0" style={{ color: "var(--text-muted)" }}>
+              {format(new Date(log.startedAt), "d MMM yyyy, HH:mm:ss")}
+            </span>
+            <span style={{ color: "var(--text-primary)" }}>{log.message}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
