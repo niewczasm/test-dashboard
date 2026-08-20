@@ -13,6 +13,7 @@ interface FailureRow {
   ticketUrl: string | null;
   ticketJiraStatus: string | null;
   ticketJiraStatusCategory: string | null;
+  ticketJiraResolvedAt: string | null;
 }
 
 interface TagRow {
@@ -46,7 +47,8 @@ export async function GET(req: NextRequest) {
          tk.key AS ticketKey,
          tk.url AS ticketUrl,
          tk.jiraStatus AS ticketJiraStatus,
-         tk.jiraStatusCategory AS ticketJiraStatusCategory
+         tk.jiraStatusCategory AS ticketJiraStatusCategory,
+         tk.jiraResolvedAt AS ticketJiraResolvedAt
        FROM TestFailure tf
        JOIN Build b ON b.id = tf.buildId
        JOIN TestCase tc ON tc.id = tf.testCaseId
@@ -91,6 +93,7 @@ export async function GET(req: NextRequest) {
         jiraStatus: string | null;
         jiraStatusCategory: string | null;
       } | null;
+      ticketJiraResolvedAt: string | null;
       tags: { id: string; name: string; color: string }[];
     }
   >();
@@ -121,6 +124,7 @@ export async function GET(req: NextRequest) {
               jiraStatusCategory: f.ticketJiraStatusCategory,
             }
           : null,
+        ticketJiraResolvedAt: f.ticketJiraResolvedAt,
         tags: tagsByTestCase.get(f.testCaseId) ?? [],
       });
     }
@@ -131,7 +135,19 @@ export async function GET(req: NextRequest) {
     byDay.set(day, (byDay.get(day) ?? 0) + 1);
   }
 
-  const topFailingTests = [...byTestCase.values()].sort((a, b) => b.failureCount - a.failureCount);
+  const topFailingTests = [...byTestCase.values()]
+    .sort((a, b) => b.failureCount - a.failureCount)
+    .map(({ ticketJiraResolvedAt, ...t }) => ({
+      ...t,
+      // Only a real regression if the test failed *after* the ticket was
+      // marked resolved — not just any failure that happens to predate a
+      // fix that landed later and is still sitting in the time window.
+      ticketRegressedAfterFix: Boolean(
+        t.ticket?.jiraStatusCategory === "done" &&
+          ticketJiraResolvedAt &&
+          t.lastFailedAt > ticketJiraResolvedAt
+      ),
+    }));
   const failuresByJob = [...byJob.entries()]
     .map(([name, count]) => ({ jobName: name, count }))
     .sort((a, b) => b.count - a.count);

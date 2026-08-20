@@ -373,10 +373,10 @@ export default function DashboardPage() {
                     <td className="overflow-hidden px-4 py-2">
                       {t.ticket ? (
                         <div className="flex items-center gap-1 overflow-hidden">
-                          {t.ticket.jiraStatusCategory === "done" && (
+                          {t.ticketRegressedAfterFix && (
                             <span
                               className="shrink-0"
-                              title={`Ticket is ${t.ticket.jiraStatus ?? "closed"} but this test is still failing`}
+                              title={`Test failed again after the ticket was marked ${t.ticket.jiraStatus ?? "done"}`}
                             >
                               ⚠️
                             </span>

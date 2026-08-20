@@ -23,6 +23,8 @@ export interface JiraIssueStatus {
   status: string;
   /** JIRA's cross-workflow bucket for the status: "new" | "indeterminate" | "done". */
   statusCategory: string;
+  /** ISO timestamp the issue was resolved, or null if it never was (or isn't anymore). */
+  resolvedAt: string | null;
 }
 
 interface JiraIssueResponse {
@@ -31,6 +33,7 @@ interface JiraIssueResponse {
       name?: string;
       statusCategory?: { key?: string };
     };
+    resolutiondate?: string | null;
   };
 }
 
@@ -39,7 +42,7 @@ export async function fetchIssueStatus(key: string): Promise<JiraIssueStatus> {
     throw new Error("JIRA_URL is not configured (see .env)");
   }
   const res = await fetch(
-    `${JIRA_URL}/rest/api/2/issue/${encodeURIComponent(key)}?fields=status`,
+    `${JIRA_URL}/rest/api/2/issue/${encodeURIComponent(key)}?fields=status,resolutiondate`,
     { headers: { ...authHeader(), Accept: "application/json" }, cache: "no-store" }
   );
   if (!res.ok) {
@@ -51,5 +54,7 @@ export async function fetchIssueStatus(key: string): Promise<JiraIssueStatus> {
   if (!status || !statusCategory) {
     throw new Error(`JIRA response for ${key} did not include a status`);
   }
-  return { status, statusCategory };
+  const rawResolvedAt = data.fields?.resolutiondate;
+  const resolvedAt = rawResolvedAt ? new Date(rawResolvedAt).toISOString() : null;
+  return { status, statusCategory, resolvedAt };
 }

@@ -135,19 +135,17 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
           {testCase.ticket && (
             <div className="mb-3 flex flex-col gap-1 rounded-md border p-2 text-xs" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center gap-2">
-                {testCase.ticket.jiraStatusCategory === "done" && (
-                  <span title="This test is still failing despite the ticket being closed">⚠️</span>
+                {testCase.ticketRegressedAfterFix && (
+                  <span title="This test failed again after the ticket was resolved">⚠️</span>
                 )}
                 {testCase.ticket.jiraStatus ? (
                   <span
                     className="rounded px-1.5 py-0.5 font-semibold"
                     style={{
-                      background:
-                        testCase.ticket.jiraStatusCategory === "done"
-                          ? "var(--status-warning)"
-                          : "var(--gridline)",
-                      color:
-                        testCase.ticket.jiraStatusCategory === "done" ? "#000" : "var(--text-secondary)",
+                      background: testCase.ticketRegressedAfterFix
+                        ? "var(--status-warning)"
+                        : "var(--gridline)",
+                      color: testCase.ticketRegressedAfterFix ? "#000" : "var(--text-secondary)",
                     }}
                   >
                     {testCase.ticket.jiraStatus}
@@ -167,6 +165,12 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                   {refreshingStatus ? "checking…" : "refresh"}
                 </button>
               </div>
+              {testCase.ticket.jiraResolvedAt && (
+                <span style={{ color: "var(--text-muted)" }}>
+                  resolved{" "}
+                  {formatDistanceToNow(new Date(testCase.ticket.jiraResolvedAt), { addSuffix: true })}
+                </span>
+              )}
               {testCase.ticket.jiraCheckedAt && (
                 <span style={{ color: "var(--text-muted)" }}>
                   checked {formatDistanceToNow(new Date(testCase.ticket.jiraCheckedAt), { addSuffix: true })}

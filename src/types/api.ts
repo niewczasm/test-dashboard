@@ -38,6 +38,7 @@ export interface TicketDto {
   updatedAt: string;
   jiraStatus: string | null;
   jiraStatusCategory: string | null;
+  jiraResolvedAt: string | null;
   jiraCheckedAt: string | null;
   jiraError: string | null;
 }
@@ -113,6 +114,8 @@ export interface TestCaseDetailDto {
   lastSeen: string;
   job: { id: string; name: string; jenkinsPath: string };
   ticket: TicketDto | null;
+  /** True only when the test failed (in a non-invalidated build) after the ticket's JIRA resolution date. */
+  ticketRegressedAfterFix: boolean;
   tags: { tag: TagDto }[];
   failures: TestFailureDto[];
 }
@@ -125,7 +128,14 @@ export interface TopFailingTestDto {
   jobName: string;
   failureCount: number;
   lastFailedAt: string;
-  ticket: { key: string; url: string | null; jiraStatus: string | null; jiraStatusCategory: string | null } | null;
+  ticket: {
+    key: string;
+    url: string | null;
+    jiraStatus: string | null;
+    jiraStatusCategory: string | null;
+  } | null;
+  /** True only when the test failed (in a non-invalidated build) after the ticket's JIRA resolution date. */
+  ticketRegressedAfterFix: boolean;
   tags: { id: string; name: string; color: string }[];
 }
 

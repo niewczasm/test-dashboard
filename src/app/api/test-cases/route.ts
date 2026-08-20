@@ -17,6 +17,7 @@ interface TestCaseRow {
   ticketUpdatedAt: string | null;
   ticketJiraStatus: string | null;
   ticketJiraStatusCategory: string | null;
+  ticketJiraResolvedAt: string | null;
   ticketJiraCheckedAt: string | null;
   ticketJiraError: string | null;
   failureCount: number;
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
          tk.id AS ticketId, tk.key AS ticketKey, tk.url AS ticketUrl, tk.note AS ticketNote,
          tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
          tk.jiraStatus AS ticketJiraStatus, tk.jiraStatusCategory AS ticketJiraStatusCategory,
+         tk.jiraResolvedAt AS ticketJiraResolvedAt,
          tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError,
          (SELECT COUNT(*) FROM TestFailure tf JOIN Build b ON b.id = tf.buildId
           WHERE tf.testCaseId = tc.id AND b.invalid = 0) AS failureCount
@@ -115,6 +117,7 @@ export async function GET(req: NextRequest) {
           updatedAt: r.ticketUpdatedAt,
           jiraStatus: r.ticketJiraStatus,
           jiraStatusCategory: r.ticketJiraStatusCategory,
+          jiraResolvedAt: r.ticketJiraResolvedAt,
           jiraCheckedAt: r.ticketJiraCheckedAt,
           jiraError: r.ticketJiraError,
         }

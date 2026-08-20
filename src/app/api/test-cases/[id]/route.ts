@@ -18,6 +18,7 @@ interface TestCaseDetailRow {
   ticketUpdatedAt: string | null;
   ticketJiraStatus: string | null;
   ticketJiraStatusCategory: string | null;
+  ticketJiraResolvedAt: string | null;
   ticketJiraCheckedAt: string | null;
   ticketJiraError: string | null;
 }
@@ -58,6 +59,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          tk.id AS ticketId, tk.key AS ticketKey, tk.url AS ticketUrl, tk.note AS ticketNote,
          tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
          tk.jiraStatus AS ticketJiraStatus, tk.jiraStatusCategory AS ticketJiraStatusCategory,
+         tk.jiraResolvedAt AS ticketJiraResolvedAt,
          tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError
        FROM TestCase tc
        JOIN Job j ON j.id = tc.jobId
@@ -93,6 +95,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     )
     .all(id) as unknown as FailureRow[];
 
+  // `failures` is already ordered newest-first; invalidated builds don't
+  // count as "still failing" (same rule the dashboard stats use).
+  const lastValidFailureAt = failures.find((f) => !toBool(f.buildInvalid))?.buildTimestamp ?? null;
+  const ticketRegressedAfterFix = Boolean(
+    row.ticketJiraStatusCategory === "done" &&
+      row.ticketJiraResolvedAt &&
+      lastValidFailureAt &&
+      lastValidFailureAt > row.ticketJiraResolvedAt
+  );
+
   return NextResponse.json({
     id: row.id,
     jobId: row.jobId,
@@ -112,10 +124,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           updatedAt: row.ticketUpdatedAt,
           jiraStatus: row.ticketJiraStatus,
           jiraStatusCategory: row.ticketJiraStatusCategory,
+          jiraResolvedAt: row.ticketJiraResolvedAt,
           jiraCheckedAt: row.ticketJiraCheckedAt,
           jiraError: row.ticketJiraError,
         }
       : null,
+    ticketRegressedAfterFix,
     tags: tags.map((t) => ({ tag: t })),
     failures: failures.map((f) => ({
       id: f.id,

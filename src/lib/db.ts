@@ -93,6 +93,7 @@ db.exec(`
     updatedAt TEXT NOT NULL,
     jiraStatus TEXT,
     jiraStatusCategory TEXT,
+    jiraResolvedAt TEXT,
     jiraCheckedAt TEXT,
     jiraError TEXT
   );
@@ -155,6 +156,7 @@ ensureColumn("Build", "invalidReason", "TEXT");
 ensureColumn("Build", "invalidAt", "TEXT");
 ensureColumn("Ticket", "jiraStatus", "TEXT");
 ensureColumn("Ticket", "jiraStatusCategory", "TEXT");
+ensureColumn("Ticket", "jiraResolvedAt", "TEXT");
 ensureColumn("Ticket", "jiraCheckedAt", "TEXT");
 ensureColumn("Ticket", "jiraError", "TEXT");
 
