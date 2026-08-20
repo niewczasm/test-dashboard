@@ -24,9 +24,11 @@ interface TagRow {
 }
 
 export async function GET(req: NextRequest) {
-  const days = Number(req.nextUrl.searchParams.get("days") ?? "30");
+  const rawDays = Number(req.nextUrl.searchParams.get("days") ?? "30");
+  const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 30;
   const jobId = req.nextUrl.searchParams.get("jobId") ?? undefined;
-  const since = subDays(new Date(), Number.isFinite(days) && days > 0 ? days : 30).toISOString();
+  const now = new Date();
+  const since = subDays(now, days).toISOString();
 
   const params: SqlParam[] = [since];
   let jobFilter = "";
@@ -151,9 +153,14 @@ export async function GET(req: NextRequest) {
   const failuresByJob = [...byJob.entries()]
     .map(([name, count]) => ({ jobName: name, count }))
     .sort((a, b) => b.count - a.count);
-  const failuresOverTime = [...byDay.entries()]
-    .map(([date, count]) => ({ date, count }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Zero-fill every calendar day in the window, not just the ones that
+  // happen to have a failure — otherwise a sparse or stale job's chart only
+  // plots its few failed days pulled tight together, which reads as if the
+  // x-axis only spans those days instead of the full selected window.
+  const failuresOverTime = Array.from({ length: days }, (_, i) => {
+    const date = subDays(now, days - 1 - i).toISOString().slice(0, 10);
+    return { date, count: byDay.get(date) ?? 0 };
+  });
 
   return NextResponse.json({
     windowDays: days,
