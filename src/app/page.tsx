@@ -10,7 +10,8 @@ import type { JobDto, StatsDto, TopFailingTestDto } from "@/types/api";
 import { shortenTestIdentifier } from "@/lib/testName";
 import { formatDistanceToNow } from "date-fns";
 
-const WINDOW_OPTIONS = [7, 14, 30, 90];
+const WINDOW_OPTIONS = [1, 7, 14, 30, 90];
+const windowLabel = (d: number) => (d === 1 ? "24h" : `${d}d`);
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
 
@@ -182,7 +183,7 @@ export default function DashboardPage() {
                   fontWeight: days === d ? 600 : 400,
                 }}
               >
-                {d}d
+                {windowLabel(d)}
               </button>
             ))}
           </div>
