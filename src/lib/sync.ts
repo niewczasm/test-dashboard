@@ -77,7 +77,7 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
   `);
 
   try {
-    const builds = await fetchRecentBuilds(job.jenkinsPath, 25);
+    const builds = await fetchRecentBuilds(job.jenkinsPath);
     const known = job.lastSyncedBuild ?? 0;
     const toProcess = builds
       .filter((b) => b.number > known && b.result !== null)
@@ -135,7 +135,7 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
     if (builds.length === 0) {
       message = "Jenkins returned no builds at all for this job path — double-check the path is correct.";
     } else if (toProcess.length === 0) {
-      message = `Up to date — latest known build is #${known}, Jenkins has ${builds.length} recent build(s) but none newer (or still running).`;
+      message = `Up to date — latest known build is #${known}, Jenkins has ${builds.length} build(s) in total but none newer (or still running).`;
     } else {
       message = `Synced ${result.newBuilds} new build(s), found ${result.newFailures} new failure(s).`;
     }

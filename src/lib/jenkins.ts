@@ -35,14 +35,34 @@ export interface JenkinsBuildSummary {
   url: string;
 }
 
-export async function fetchRecentBuilds(
-  jenkinsPath: string,
-  limit = 25
-): Promise<JenkinsBuildSummary[]> {
-  const data = await jenkinsFetch<{ builds: JenkinsBuildSummary[] }>(
-    `${jobApiPath(jenkinsPath)}/api/json?tree=builds[number,result,timestamp,url]{0,${limit}}`
-  );
-  return data.builds ?? [];
+const BUILD_PAGE_SIZE = 100;
+// Not a "recent builds" cap — a runaway-request guard in case a Jenkins
+// instance is misconfigured to keep an unbounded number of builds. Fetching
+// this many would already mean thousands of individual testReport requests
+// during sync, so this ceiling is generous, not tight.
+const MAX_BUILDS_SAFETY_CAP = 5000;
+
+/**
+ * Fetches every build Jenkins still has for this job (walking pages of
+ * `BUILD_PAGE_SIZE` via the `{start,end}` tree range syntax), not just the
+ * most recent ones — sync.ts relies on seeing the full history on a job's
+ * first sync, since after that it only looks for build numbers newer than
+ * whatever it saw last time.
+ */
+export async function fetchRecentBuilds(jenkinsPath: string): Promise<JenkinsBuildSummary[]> {
+  const all: JenkinsBuildSummary[] = [];
+  let start = 0;
+  while (all.length < MAX_BUILDS_SAFETY_CAP) {
+    const end = start + BUILD_PAGE_SIZE;
+    const data = await jenkinsFetch<{ builds: JenkinsBuildSummary[] }>(
+      `${jobApiPath(jenkinsPath)}/api/json?tree=builds[number,result,timestamp,url]{${start},${end}}`
+    );
+    const page = data.builds ?? [];
+    all.push(...page);
+    if (page.length < BUILD_PAGE_SIZE) break; // fewer than a full page = end of Jenkins' history
+    start = end;
+  }
+  return all;
 }
 
 interface JenkinsTestCase {
