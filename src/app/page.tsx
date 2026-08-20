@@ -8,10 +8,25 @@ import { FailuresTrendChart } from "@/components/FailuresTrendChart";
 import { TagBadge } from "@/components/TagBadge";
 import type { JobDto, StatsDto, TopFailingTestDto } from "@/types/api";
 import { shortenTestIdentifier } from "@/lib/testName";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
-const WINDOW_OPTIONS = [1, 7, 14, 30, 90];
-const windowLabel = (d: number) => (d === 1 ? "24h" : `${d}d`);
+const WINDOW_OPTIONS = [1, 3, 5, 7, 14, 30, 90];
+
+type WindowMode = { kind: "days"; days: number } | { kind: "all" };
+
+function windowModeLabel(mode: WindowMode): string {
+  if (mode.kind === "all") return "all time";
+  return mode.days === 1 ? "24h" : `${mode.days}d`;
+}
+
+function statTileLabel(mode: WindowMode, stats: StatsDto | null): string {
+  if (mode.kind === "all") {
+    return stats?.sinceDate
+      ? `Failures since ${format(new Date(stats.sinceDate), "d MMM yyyy")}`
+      : "Failures (all time)";
+  }
+  return `Failures in ${windowModeLabel(mode)}`;
+}
 
 function buildResultColor(result: string | null): string {
   switch (result) {
@@ -34,7 +49,7 @@ function jobHealthPriority(job: JobDto): number {
 }
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const WIDTHS_STORAGE_KEY = "dashboard-top-failing-tests-column-widths";
-const DAYS_STORAGE_KEY = "dashboard-days-window";
+const WINDOW_MODE_STORAGE_KEY = "dashboard-window-mode";
 const LATEST_BUILDS_EXPANDED_KEY = "dashboard-latest-builds-expanded";
 const FAILURES_BY_JOB_EXPANDED_KEY = "dashboard-failures-by-job-expanded";
 const FAILURES_PER_DAY_EXPANDED_KEY = "dashboard-failures-per-day-expanded";
@@ -89,7 +104,9 @@ function sortValue(t: TopFailingTestDto, jenkinsPath: string, column: SortColumn
 }
 
 export default function DashboardPage() {
-  const [days, setDays] = useState(30);
+  const [windowMode, setWindowModeState] = useState<WindowMode>({ kind: "days", days: 30 });
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customValue, setCustomValue] = useState("");
   const [jobId, setJobId] = useState<string>("");
   const [jobs, setJobs] = useState<JobDto[]>([]);
   const [stats, setStats] = useState<StatsDto | null>(null);
@@ -105,7 +122,7 @@ export default function DashboardPage() {
   // first stats fetch already uses the persisted time window instead of
   // firing once with the default (30d) and again moments later with the
   // corrected value — that double-fetch was the visible flicker.
-  const [daysReady, setDaysReady] = useState(false);
+  const [windowReady, setWindowReady] = useState(false);
   const loading = stats === null;
 
   const jenkinsPathByJobId = new Map(jobs.map((j) => [j.id, j.jenkinsPath]));
@@ -114,11 +131,14 @@ export default function DashboardPage() {
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
   const showFailuresByJobChart = !jobId && jobs.length > 1;
+  // Only the literal 24h preset is too short for a meaningful daily trend;
+  // any custom window or "all time" still gets the chart.
+  const showTrendChart = !(windowMode.kind === "days" && windowMode.days === 1);
   // Collapsing one chart just hides its own body, leaving its header card in
   // place next to the other one. Collapsing both is different — there's no
   // point showing two empty header-only cards side by side, so the whole
   // section goes away instead.
-  const bothChartsApplicable = days !== 1 && showFailuresByJobChart;
+  const bothChartsApplicable = showTrendChart && showFailuresByJobChart;
   const bothChartsCollapsed = !failuresPerDayExpanded && !failuresByJobExpanded;
   const hideChartsSection = bothChartsApplicable && bothChartsCollapsed;
 
@@ -135,12 +155,17 @@ export default function DashboardPage() {
         // ignore malformed/unavailable storage
       }
       try {
-        const rawDays = Number(localStorage.getItem(DAYS_STORAGE_KEY));
-        if (WINDOW_OPTIONS.includes(rawDays)) setDays(rawDays);
+        const raw = localStorage.getItem(WINDOW_MODE_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed?.kind === "all") {
+          setWindowModeState({ kind: "all" });
+        } else if (parsed?.kind === "days" && typeof parsed.days === "number" && parsed.days > 0) {
+          setWindowModeState({ kind: "days", days: parsed.days });
+        }
       } catch {
         // ignore malformed/unavailable storage
       } finally {
-        setDaysReady(true);
+        setWindowReady(true);
       }
       try {
         const rawLatestBuilds = localStorage.getItem(LATEST_BUILDS_EXPANDED_KEY);
@@ -202,14 +227,23 @@ export default function DashboardPage() {
     }
   }
 
-  function selectDays(d: number) {
-    setDays(d);
+  function selectWindowMode(mode: WindowMode) {
+    setWindowModeState(mode);
     setPage(1);
+    setCustomOpen(false);
     try {
-      localStorage.setItem(DAYS_STORAGE_KEY, String(d));
+      localStorage.setItem(WINDOW_MODE_STORAGE_KEY, JSON.stringify(mode));
     } catch {
       // ignore unavailable storage
     }
+  }
+
+  function applyCustomDays(e: React.FormEvent) {
+    e.preventDefault();
+    const n = Number(customValue);
+    if (!Number.isFinite(n) || n <= 0) return;
+    selectWindowMode({ kind: "days", days: n });
+    setCustomValue("");
   }
 
   useEffect(() => {
@@ -220,13 +254,18 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!daysReady) return;
-    const params = new URLSearchParams({ days: String(days) });
+    if (!windowReady) return;
+    const params = new URLSearchParams();
+    if (windowMode.kind === "all") {
+      params.set("all", "true");
+    } else {
+      params.set("days", String(windowMode.days));
+    }
     if (jobId) params.set("jobId", jobId);
     fetch(`/api/stats?${params}`)
       .then((r) => r.json())
       .then(setStats);
-  }, [days, jobId, daysReady]);
+  }, [windowMode, jobId, windowReady]);
 
   function toggleSort(column: SortColumn) {
     if (column === sortColumn) {
@@ -290,7 +329,7 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dashboard</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={jobId}
             onChange={(e) => {
@@ -306,22 +345,76 @@ export default function DashboardPage() {
               </option>
             ))}
           </select>
-          <div className="card flex overflow-hidden text-sm">
-            {WINDOW_OPTIONS.map((d) => (
-              <button
-                key={d}
-                onClick={() => selectDays(d)}
-                className="px-3 py-1.5"
-                style={{
-                  background: days === d ? "var(--series-1)" : "transparent",
-                  color: days === d ? "#fff" : "var(--text-secondary)",
-                  fontWeight: days === d ? 600 : 400,
-                }}
-              >
-                {windowLabel(d)}
-              </button>
-            ))}
+          <div className="card flex flex-wrap overflow-hidden text-sm">
+            {WINDOW_OPTIONS.map((d) => {
+              const active = windowMode.kind === "days" && windowMode.days === d;
+              return (
+                <button
+                  key={d}
+                  onClick={() => selectWindowMode({ kind: "days", days: d })}
+                  className="px-3 py-1.5"
+                  style={{
+                    background: active ? "var(--series-1)" : "transparent",
+                    color: active ? "#fff" : "var(--text-secondary)",
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  {d === 1 ? "24h" : `${d}d`}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => selectWindowMode({ kind: "all" })}
+              className="px-3 py-1.5"
+              style={{
+                background: windowMode.kind === "all" ? "var(--series-1)" : "transparent",
+                color: windowMode.kind === "all" ? "#fff" : "var(--text-secondary)",
+                fontWeight: windowMode.kind === "all" ? 600 : 400,
+              }}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setCustomOpen((o) => !o)}
+              className="px-3 py-1.5"
+              style={{
+                background: customOpen || (windowMode.kind === "days" && !WINDOW_OPTIONS.includes(windowMode.days))
+                  ? "var(--series-1)"
+                  : "transparent",
+                color: customOpen || (windowMode.kind === "days" && !WINDOW_OPTIONS.includes(windowMode.days))
+                  ? "#fff"
+                  : "var(--text-secondary)",
+                fontWeight: windowMode.kind === "days" && !WINDOW_OPTIONS.includes(windowMode.days) ? 600 : 400,
+              }}
+            >
+              {windowMode.kind === "days" && !WINDOW_OPTIONS.includes(windowMode.days)
+                ? windowModeLabel(windowMode)
+                : "Custom"}
+            </button>
           </div>
+          {customOpen && (
+            <form onSubmit={applyCustomDays} className="card flex items-center gap-2 px-3 py-1.5 text-sm">
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                autoFocus
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                placeholder="e.g. 45"
+                className="w-20 rounded border px-1.5 py-1 text-sm"
+                style={{ borderColor: "var(--border)", background: "var(--page)" }}
+              />
+              <span style={{ color: "var(--text-muted)" }}>days</span>
+              <button
+                type="submit"
+                className="rounded-md px-2 py-1 text-xs font-medium text-white"
+                style={{ background: "var(--series-1)" }}
+              >
+                Apply
+              </button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -336,7 +429,7 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <StatTile label={`Failures in ${windowLabel(days)}`} value={stats?.totalFailures ?? "–"} />
+        <StatTile label={statTileLabel(windowMode, stats)} value={stats?.totalFailures ?? "–"} />
         <StatTile
           label="Unique failing tests"
           value={stats?.uniqueFailingTests ?? "–"}
@@ -422,7 +515,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {(days !== 1 || showFailuresByJobChart) && hideChartsSection && (
+      {(showTrendChart || showFailuresByJobChart) && hideChartsSection && (
         <button
           onClick={expandBothCharts}
           className="card flex w-full items-center justify-between p-3 text-left text-xs"
@@ -433,11 +526,9 @@ export default function DashboardPage() {
         </button>
       )}
 
-      {(days !== 1 || showFailuresByJobChart) && !hideChartsSection && (
-        <div
-          className={`grid grid-cols-1 gap-4 ${days !== 1 && showFailuresByJobChart ? "lg:grid-cols-2" : ""}`}
-        >
-          {days !== 1 && (
+      {(showTrendChart || showFailuresByJobChart) && !hideChartsSection && (
+        <div className={`grid grid-cols-1 gap-4 ${bothChartsApplicable ? "lg:grid-cols-2" : ""}`}>
+          {showTrendChart && (
             <div className="card p-4">
               <button
                 onClick={toggleFailuresPerDayExpanded}

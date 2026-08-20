@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, inPlaceholders, type SqlParam } from "@/lib/db";
-import { subDays } from "date-fns";
+
+const DEFAULT_DAYS = 30;
+// Only caps how many day-buckets the trend chart zero-fills for, not the
+// underlying totals/rankings — an "all time" window on a job with years of
+// history would otherwise generate an unreasonable number of chart points.
+const MAX_CHART_DAYS = 400;
 
 interface FailureRow {
   testCaseId: string;
@@ -24,13 +29,34 @@ interface TagRow {
 }
 
 export async function GET(req: NextRequest) {
-  const rawDays = Number(req.nextUrl.searchParams.get("days") ?? "30");
-  const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : 30;
   const jobId = req.nextUrl.searchParams.get("jobId") ?? undefined;
   const now = new Date();
-  const since = subDays(now, days).toISOString();
+  const allTime = req.nextUrl.searchParams.get("all") === "true";
 
-  const params: SqlParam[] = [since];
+  let since: Date;
+  let windowDays: number | null;
+  if (allTime) {
+    const oldest = db
+      .prepare(`SELECT MIN(timestamp) AS ts FROM Build WHERE invalid = 0 ${jobId ? "AND jobId = ?" : ""}`)
+      .get(...(jobId ? [jobId] : [])) as { ts: string | null };
+    since = oldest.ts ? new Date(oldest.ts) : now;
+    windowDays = null;
+  } else {
+    const rawDays = Number(req.nextUrl.searchParams.get("days") ?? String(DEFAULT_DAYS));
+    const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : DEFAULT_DAYS;
+    since = new Date(now.getTime() - days * 24 * 3600_000);
+    windowDays = days;
+  }
+  const sinceIso = since.toISOString();
+  // How many day-buckets the trend chart needs to cover the actual window,
+  // capped so an "all time" span with years of history doesn't generate an
+  // unreasonable number of chart points (see MAX_CHART_DAYS above).
+  const chartDays = Math.min(
+    MAX_CHART_DAYS,
+    Math.max(1, Math.ceil((now.getTime() - since.getTime()) / (24 * 3600_000)))
+  );
+
+  const params: SqlParam[] = [sinceIso];
   let jobFilter = "";
   if (jobId) {
     jobFilter = "AND tc.jobId = ?";
@@ -157,13 +183,16 @@ export async function GET(req: NextRequest) {
   // happen to have a failure — otherwise a sparse or stale job's chart only
   // plots its few failed days pulled tight together, which reads as if the
   // x-axis only spans those days instead of the full selected window.
-  const failuresOverTime = Array.from({ length: days }, (_, i) => {
-    const date = subDays(now, days - 1 - i).toISOString().slice(0, 10);
+  const failuresOverTime = Array.from({ length: chartDays }, (_, i) => {
+    const date = new Date(now.getTime() - (chartDays - 1 - i) * 24 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
     return { date, count: byDay.get(date) ?? 0 };
   });
 
   return NextResponse.json({
-    windowDays: days,
+    windowDays,
+    sinceDate: allTime ? sinceIso : null,
     totalFailures: failures.length,
     uniqueFailingTests: byTestCase.size,
     topFailingTests,

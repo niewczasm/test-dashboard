@@ -149,7 +149,9 @@ export interface TopFailingTestDto {
 }
 
 export interface StatsDto {
-  windowDays: number;
+  windowDays: number | null;
+  /** Only set in "all time" mode: the oldest build's timestamp, i.e. what "since" actually resolved to. */
+  sinceDate: string | null;
   totalFailures: number;
   uniqueFailingTests: number;
   topFailingTests: TopFailingTestDto[];
