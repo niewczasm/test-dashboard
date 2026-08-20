@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SyncButton } from "@/components/SyncButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -43,7 +44,10 @@ export function Nav() {
             })}
           </nav>
         </div>
-        <SyncButton />
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <SyncButton />
+        </div>
       </div>
     </header>
   );
