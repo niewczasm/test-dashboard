@@ -1,0 +1,26 @@
+#!/bin/sh
+# Runs automatically after `git pull` / `git merge` once this repo's hooks
+# path is set to this directory (see README's "Auto-rebuild on git pull"
+# section). Reinstalls dependencies if the lockfile changed, rebuilds, and
+# restarts the pm2-managed service — but only if the build actually
+# succeeds, so a broken pull never takes down the currently running
+# instance.
+set -e
+
+CHANGED=$(git diff --name-only ORIG_HEAD HEAD 2>/dev/null || true)
+
+if echo "$CHANGED" | grep -q '^package-lock\.json$'; then
+  echo "post-merge: package-lock.json changed — running npm ci..."
+  npm ci
+fi
+
+echo "post-merge: building..."
+if ! npm run build; then
+  echo "post-merge: BUILD FAILED — leaving the currently running instance untouched." >&2
+  exit 1
+fi
+
+echo "post-merge: build OK — restarting test-failures-dashboard via pm2..."
+pm2 restart test-failures-dashboard
+
+echo "post-merge: done."
