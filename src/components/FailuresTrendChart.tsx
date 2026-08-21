@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -14,6 +14,7 @@ import {
 import type { FailuresOverTimePointDto, TrendTagDto } from "@/types/api";
 
 const TOTAL_KEY = "__total__";
+const HIDDEN_SERIES_STORAGE_KEY = "dashboard-trend-hidden-series";
 
 export function FailuresTrendChart({
   data,
@@ -23,6 +24,24 @@ export function FailuresTrendChart({
   tags: TrendTagDto[];
 }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  // Read persisted legend-toggle state after mount only, so the
+  // server-rendered markup (which has no access to localStorage) matches
+  // the first client render and React doesn't complain about a hydration
+  // mismatch — same pattern the dashboard page uses for its own prefs.
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const raw = localStorage.getItem(HIDDEN_SERIES_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setHidden(new Set(parsed));
+        }
+      } catch {
+        // ignore malformed/unavailable storage
+      }
+    });
+  }, []);
 
   if (data.length === 0) {
     return (
@@ -40,6 +59,11 @@ export function FailuresTrendChart({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      try {
+        localStorage.setItem(HIDDEN_SERIES_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore unavailable storage
+      }
       return next;
     });
   }
