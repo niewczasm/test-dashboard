@@ -12,6 +12,18 @@ const STATUS_COLOR: Record<string, string> = {
   REGRESSION: "var(--status-serious)",
 };
 
+function downloadStdout(buildNumber: number, stdout: string) {
+  const blob = new Blob([stdout], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `build_#${buildNumber}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function TestCaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
   const [testCase, setTestCase] = useState<TestCaseDetailDto | null>(null);
@@ -353,8 +365,20 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                     )}
                     {f.stdout && (
                       <div>
-                        <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-                          Standard output
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+                            Standard output
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadStdout(f.build.number, f.stdout!);
+                            }}
+                            className="text-xs underline"
+                            style={{ color: "var(--series-1)" }}
+                          >
+                            download .txt
+                          </button>
                         </div>
                         <pre
                           className="mt-1 max-h-80 overflow-auto rounded-md p-2 text-xs whitespace-pre-wrap"
