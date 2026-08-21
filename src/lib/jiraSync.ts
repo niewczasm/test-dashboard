@@ -40,3 +40,16 @@ export async function syncAllTicketStatuses(): Promise<void> {
     await syncTicketStatus(ticket.id);
   }
 }
+
+/** Refreshes JIRA status only for tickets attached to one job's tests — used by the manual "sync" button for a single job. */
+export async function syncTicketStatusesForJob(jobId: string): Promise<void> {
+  if (!isJiraConfigured()) return;
+  const tickets = db
+    .prepare(
+      `SELECT tk.id, tk.key FROM Ticket tk JOIN TestCase tc ON tc.id = tk.testCaseId WHERE tc.jobId = ?`
+    )
+    .all(jobId) as unknown as TicketRow[];
+  for (const ticket of tickets) {
+    await syncTicketStatus(ticket.id);
+  }
+}
