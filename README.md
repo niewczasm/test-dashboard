@@ -89,6 +89,51 @@ builds, manual JIRA ticket assignment, and tagging of tests.
    npm run build && npm start   # production
    ```
 
+### Auto-rebuild on git pull (non-Docker deployments)
+
+If you're running the app directly with `npm run build && npm start` (this
+matters most on Windows, where there's no Docker/systemd to lean on), you
+can make `git pull` automatically rebuild and restart the service instead of
+doing it by hand every time:
+
+1. Install [pm2](https://pm2.keymetrics.io/) globally — it's a pure-npm
+   process manager (no external binary download, unlike e.g. NSSM), which
+   matters if your network blocks fetching third-party executables:
+
+   ```bash
+   npm install -g pm2
+   ```
+
+2. Start the app under pm2 once, using the `ecosystem.config.js` in this
+   repo, then save the process list so pm2 remembers it:
+
+   ```bash
+   pm2 start ecosystem.config.js
+   pm2 save
+   ```
+
+   (Optional, for surviving a reboot: `npm install -g pm2-windows-startup`
+   then `pm2-windows-startup install`.)
+
+3. Point git at this repo's versioned hooks directory (one-time, per clone):
+
+   ```bash
+   git config core.hooksPath scripts/git-hooks
+   ```
+
+From then on, every `git pull` you run triggers
+`scripts/git-hooks/post-merge`: it runs `npm ci` if `package-lock.json`
+changed, rebuilds, and restarts the `test-failures-dashboard` pm2 process —
+all through Git for Windows' bundled shell, so no PowerShell execution
+policy to fight with. If the build fails, the hook stops before restarting,
+so a broken pull never takes down the currently running instance — but note
+that `git pull` itself will still report success either way (git doesn't
+fail the pull based on a hook's exit status), so watch the hook's own output
+in your terminal to see whether the rebuild actually succeeded.
+
+Useful pm2 commands afterward: `pm2 logs test-failures-dashboard`,
+`pm2 restart test-failures-dashboard`, `pm2 stop test-failures-dashboard`.
+
 ## Docker
 
 The repo includes a multi-stage `Dockerfile` that builds the app and starts
