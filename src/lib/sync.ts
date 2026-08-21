@@ -171,3 +171,117 @@ export async function syncAllJobs(): Promise<JobSyncResult[]> {
   }
   return results;
 }
+
+interface StoredBuildRow {
+  id: string;
+  number: number;
+  timestamp: string;
+}
+
+/**
+ * Re-fetches Jenkins' test report for every build already stored for this
+ * job and inserts any failures missing from our records. Exists to backfill
+ * a historical bug: a transient Jenkins fetch error used to be silently
+ * treated the same as "this build has no test report", so the build got
+ * marked fully synced anyway and its real failures were lost for good (see
+ * `fetchFailingTests` in jenkins.ts — now fixed to only treat an actual 404
+ * that way and let other errors abort the sync instead). This recheck is
+ * how to fix data that already got lost before that fix landed.
+ *
+ * Never touches `lastSyncedBuild` — the regular forward sync in `syncJob`
+ * owns that. Safe to run repeatedly: every insert here is the same
+ * `ON CONFLICT DO NOTHING` idempotent shape `syncJob` uses.
+ */
+export async function recheckJob(jobId: string): Promise<JobSyncResult> {
+  const startedAt = nowIso();
+  const job = db
+    .prepare("SELECT id, name, jenkinsPath, lastSyncedBuild FROM Job WHERE id = ?")
+    .get(jobId) as JobRow | undefined;
+  if (!job) {
+    throw new Error(`Job not found: ${jobId}`);
+  }
+
+  const result: JobSyncResult = {
+    jobId: job.id,
+    jobName: job.name,
+    newBuilds: 0,
+    newFailures: 0,
+    error: null,
+  };
+
+  const upsertTestCase = db.prepare(`
+    INSERT INTO TestCase (id, jobId, className, testName, firstSeen, lastSeen)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (jobId, className, testName) DO UPDATE SET lastSeen = excluded.lastSeen
+    RETURNING id
+  `);
+  const insertFailure = db.prepare(`
+    INSERT INTO TestFailure (id, testCaseId, buildId, status, errorMessage, stackTrace, stdout, stderr, duration, failedAt, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (testCaseId, buildId) DO NOTHING
+  `);
+
+  const builds = db
+    .prepare("SELECT id, number, timestamp FROM Build WHERE jobId = ? ORDER BY number ASC")
+    .all(job.id) as unknown as StoredBuildRow[];
+
+  try {
+    for (const build of builds) {
+      const failures = await fetchFailingTests(job.jenkinsPath, build.number);
+      const buildTimestampMs = new Date(build.timestamp).getTime();
+
+      for (const failure of failures) {
+        const testCaseRow = upsertTestCase.get(
+          newId(),
+          job.id,
+          failure.className,
+          failure.testName,
+          nowIso(),
+          nowIso()
+        ) as { id: string };
+
+        const failedAt = new Date(
+          buildTimestampMs + (failure.duration ? failure.duration * 1000 : 0)
+        ).toISOString();
+
+        const info = insertFailure.run(
+          newId(),
+          testCaseRow.id,
+          build.id,
+          failure.status,
+          failure.errorMessage,
+          failure.stackTrace,
+          failure.stdout,
+          failure.stderr,
+          failure.duration,
+          failedAt,
+          nowIso()
+        );
+        if (info.changes > 0) {
+          result.newFailures += 1;
+        }
+      }
+    }
+
+    const message =
+      result.newFailures > 0
+        ? `Rechecked ${builds.length} build(s), recovered ${result.newFailures} previously-missed failure(s).`
+        : `Rechecked ${builds.length} build(s), nothing was missing.`;
+    writeSyncLog(job.id, startedAt, true, message, 0, result.newFailures);
+  } catch (err) {
+    const message = describeError(err);
+    result.error = message;
+    writeSyncLog(job.id, startedAt, false, message, 0, result.newFailures);
+  }
+
+  return result;
+}
+
+export async function recheckAllJobs(): Promise<JobSyncResult[]> {
+  const jobs = db.prepare("SELECT id FROM Job WHERE enabled = 1").all() as { id: string }[];
+  const results: JobSyncResult[] = [];
+  for (const job of jobs) {
+    results.push(await recheckJob(job.id));
+  }
+  return results;
+}

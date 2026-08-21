@@ -8,6 +8,20 @@ function authHeader(): Record<string, string> {
   return { Authorization: `Basic ${token}` };
 }
 
+/** Thrown for a non-2xx Jenkins response, carrying the status so callers can
+ *  tell "genuinely doesn't exist" (404) apart from a real failure worth
+ *  retrying (5xx, auth, etc.) instead of treating every non-ok response the
+ *  same way. */
+export class JenkinsHttpError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "JenkinsHttpError";
+  }
+}
+
 async function jenkinsFetch<T>(path: string): Promise<T> {
   if (!JENKINS_URL) {
     throw new Error("JENKINS_URL is not configured (see .env)");
@@ -17,7 +31,10 @@ async function jenkinsFetch<T>(path: string): Promise<T> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Jenkins request failed (${res.status} ${res.statusText}): ${path}`);
+    throw new JenkinsHttpError(
+      `Jenkins request failed (${res.status} ${res.statusText}): ${path}`,
+      res.status
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -106,9 +123,18 @@ export async function fetchFailingTests(
     report = await jenkinsFetch<JenkinsTestReport>(
       `${jobApiPath(jenkinsPath)}/${buildNumber}/testReport/api/json`
     );
-  } catch {
-    // No test report published for this build (e.g. build failed before tests ran).
-    return [];
+  } catch (err) {
+    // A 404 genuinely means "no test report published for this build" (e.g.
+    // it failed before tests ran) — that's a real, permanent "no failures".
+    // Anything else (network blip, Jenkins 5xx, auth trouble, timeout) is
+    // NOT the same thing and must not be treated as "no failures", or
+    // sync.ts will mark the build as fully synced and permanently lose
+    // whatever it actually failed on — let it propagate so the caller
+    // retries this build on the next sync instead.
+    if (err instanceof JenkinsHttpError && err.status === 404) {
+      return [];
+    }
+    throw err;
   }
 
   const failures: ParsedTestFailure[] = [];

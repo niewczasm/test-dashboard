@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncAllJobs, syncJob } from "@/lib/sync";
+import { recheckAllJobs, recheckJob, syncAllJobs, syncJob } from "@/lib/sync";
 import { isJenkinsConfigured } from "@/lib/jenkins";
 import { syncAllTicketStatuses, syncTicketStatusesForJob } from "@/lib/jiraSync";
 
@@ -12,6 +12,13 @@ export async function POST(req: NextRequest) {
   }
 
   const jobId = req.nextUrl.searchParams.get("jobId");
+  const recheck = req.nextUrl.searchParams.get("recheck") === "true";
+
+  if (recheck) {
+    const results = jobId ? [await recheckJob(jobId)] : await recheckAllJobs();
+    return NextResponse.json({ results });
+  }
+
   const results = jobId ? [await syncJob(jobId)] : await syncAllJobs();
 
   // Best-effort — a slow/unreachable JIRA shouldn't fail a Jenkins sync that

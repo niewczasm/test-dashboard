@@ -21,6 +21,7 @@ export default function JobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [recheckingId, setRecheckingId] = useState<string | null>(null);
 
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
@@ -100,6 +101,40 @@ export default function JobsPage() {
       }
     } finally {
       setSyncingId(null);
+    }
+  }
+
+  async function recheckOne(job: JobDto) {
+    if (
+      !confirm(
+        `Recheck all already-synced builds for "${job.name}"? This re-fetches every build's ` +
+          `test report from Jenkins to recover failures a past sync error may have silently ` +
+          `missed — can take a while for jobs with a long history.`
+      )
+    )
+      return;
+    setRecheckingId(job.id);
+    try {
+      const res = await fetch(`/api/sync?jobId=${job.id}&recheck=true`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "Recheck failed");
+        return;
+      }
+      const result = data.results?.[0];
+      if (result?.error) {
+        alert(`Recheck failed: ${result.error}`);
+      } else if (result?.newFailures > 0) {
+        alert(`Recheck complete — recovered ${result.newFailures} previously-missed failure(s).`);
+      } else {
+        alert("Recheck complete — nothing was missing.");
+      }
+      load();
+      if (expandedJobId === job.id && panel === "logs") {
+        setLogsRefreshKey((k) => k + 1);
+      }
+    } finally {
+      setRecheckingId(null);
     }
   }
 
@@ -201,6 +236,15 @@ export default function JobsPage() {
                         style={{ color: "var(--series-1)" }}
                       >
                         {syncingId === job.id ? "syncing…" : "sync"}
+                      </button>
+                      <button
+                        onClick={() => recheckOne(job)}
+                        disabled={recheckingId === job.id}
+                        className="text-xs underline disabled:opacity-60"
+                        style={{ color: "var(--series-1)" }}
+                        title="Re-fetch every already-synced build's test report to recover any failures a past sync error may have missed"
+                      >
+                        {recheckingId === job.id ? "rechecking…" : "recheck"}
                       </button>
                       <button
                         onClick={() => togglePanel(job.id, "logs")}
