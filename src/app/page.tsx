@@ -569,7 +569,10 @@ export default function DashboardPage() {
                 </span>
               </button>
               {failuresPerDayExpanded && (
-                <FailuresTrendChart data={stats?.failuresOverTime ?? []} />
+                <FailuresTrendChart
+                  data={stats?.failuresOverTime ?? []}
+                  tags={stats?.trendTags ?? []}
+                />
               )}
             </div>
           )}

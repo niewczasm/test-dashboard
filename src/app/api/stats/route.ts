@@ -28,32 +28,44 @@ interface TagRow {
   color: string;
 }
 
+const DAY_MS = 24 * 3600_000;
+// How many tag series the trend chart will plot at once — past this, extra
+// tags are dropped (by ascending frequency) to keep the chart legible.
+const MAX_TREND_TAGS = 12;
+
 export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId") ?? undefined;
   const now = new Date();
   const allTime = req.nextUrl.searchParams.get("all") === "true";
 
+  const oldestBuildRow = db
+    .prepare(`SELECT MIN(timestamp) AS ts FROM Build WHERE invalid = 0 ${jobId ? "AND jobId = ?" : ""}`)
+    .get(...(jobId ? [jobId] : [])) as { ts: string | null };
+
   let since: Date;
   let windowDays: number | null;
   if (allTime) {
-    const oldest = db
-      .prepare(`SELECT MIN(timestamp) AS ts FROM Build WHERE invalid = 0 ${jobId ? "AND jobId = ?" : ""}`)
-      .get(...(jobId ? [jobId] : [])) as { ts: string | null };
-    since = oldest.ts ? new Date(oldest.ts) : now;
+    since = oldestBuildRow.ts ? new Date(oldestBuildRow.ts) : now;
     windowDays = null;
   } else {
     const rawDays = Number(req.nextUrl.searchParams.get("days") ?? String(DEFAULT_DAYS));
     const days = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : DEFAULT_DAYS;
-    since = new Date(now.getTime() - days * 24 * 3600_000);
+    since = new Date(now.getTime() - days * DAY_MS);
     windowDays = days;
   }
   const sinceIso = since.toISOString();
+  // The trend chart shouldn't zero-fill days before the oldest build that
+  // actually exists — e.g. a 90d window with only 15 days of real history
+  // would otherwise draw 75 days of misleading flat zero. Totals/rankings
+  // above still use the full `since` window; only the chart's start clamps.
+  const chartStart =
+    oldestBuildRow.ts && new Date(oldestBuildRow.ts) > since ? new Date(oldestBuildRow.ts) : since;
   // How many day-buckets the trend chart needs to cover the actual window,
   // capped so an "all time" span with years of history doesn't generate an
   // unreasonable number of chart points (see MAX_CHART_DAYS above).
   const chartDays = Math.min(
     MAX_CHART_DAYS,
-    Math.max(1, Math.ceil((now.getTime() - since.getTime()) / (24 * 3600_000)))
+    Math.max(1, Math.ceil((now.getTime() - chartStart.getTime()) / DAY_MS))
   );
 
   const params: SqlParam[] = [sinceIso];
@@ -127,6 +139,9 @@ export async function GET(req: NextRequest) {
   >();
   const byJob = new Map<string, number>();
   const byDay = new Map<string, number>();
+  // date -> tagId -> count, for the per-tag trend lines.
+  const byDayTag = new Map<string, Map<string, number>>();
+  const tagsUsed = new Map<string, { id: string; name: string; color: string; total: number }>();
 
   for (const f of failures) {
     const existing = byTestCase.get(f.testCaseId);
@@ -161,6 +176,19 @@ export async function GET(req: NextRequest) {
 
     const day = f.buildTimestamp.slice(0, 10);
     byDay.set(day, (byDay.get(day) ?? 0) + 1);
+
+    for (const tag of tagsByTestCase.get(f.testCaseId) ?? []) {
+      const dayMap = byDayTag.get(day) ?? new Map<string, number>();
+      dayMap.set(tag.id, (dayMap.get(tag.id) ?? 0) + 1);
+      byDayTag.set(day, dayMap);
+
+      const used = tagsUsed.get(tag.id);
+      if (used) {
+        used.total += 1;
+      } else {
+        tagsUsed.set(tag.id, { id: tag.id, name: tag.name, color: tag.color, total: 1 });
+      }
+    }
   }
 
   const topFailingTests = [...byTestCase.values()]
@@ -179,15 +207,25 @@ export async function GET(req: NextRequest) {
   const failuresByJob = [...byJob.entries()]
     .map(([name, count]) => ({ jobName: name, count }))
     .sort((a, b) => b.count - a.count);
-  // Zero-fill every calendar day in the window, not just the ones that
-  // happen to have a failure — otherwise a sparse or stale job's chart only
-  // plots its few failed days pulled tight together, which reads as if the
-  // x-axis only spans those days instead of the full selected window.
+  // The chart's own top tags, most-frequent first, capped so a job with
+  // dozens of tags doesn't turn the trend chart into unreadable spaghetti.
+  const trendTags = [...tagsUsed.values()]
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
+    .slice(0, MAX_TREND_TAGS)
+    .map(({ id, name, color }) => ({ id, name, color }));
+
+  // Zero-fill every calendar day in the (possibly clamped) chart window, not
+  // just the ones that happen to have a failure — otherwise a sparse or
+  // stale job's chart only plots its few failed days pulled tight together,
+  // which reads as if the x-axis only spans those days.
   const failuresOverTime = Array.from({ length: chartDays }, (_, i) => {
-    const date = new Date(now.getTime() - (chartDays - 1 - i) * 24 * 3600_000)
-      .toISOString()
-      .slice(0, 10);
-    return { date, count: byDay.get(date) ?? 0 };
+    const date = new Date(now.getTime() - (chartDays - 1 - i) * DAY_MS).toISOString().slice(0, 10);
+    const dayTagCounts = byDayTag.get(date);
+    const tagCounts: Record<string, number> = {};
+    for (const tag of trendTags) {
+      tagCounts[tag.id] = dayTagCounts?.get(tag.id) ?? 0;
+    }
+    return { date, total: byDay.get(date) ?? 0, tagCounts };
   });
 
   return NextResponse.json({
@@ -198,5 +236,6 @@ export async function GET(req: NextRequest) {
     topFailingTests,
     failuresByJob,
     failuresOverTime,
+    trendTags,
   });
 }

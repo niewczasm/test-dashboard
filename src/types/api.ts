@@ -155,6 +155,19 @@ export interface TopFailingTestDto {
   tags: { id: string; name: string; color: string }[];
 }
 
+export interface TrendTagDto {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface FailuresOverTimePointDto {
+  date: string;
+  total: number;
+  /** tagId -> failure count on this day, keyed for every tag in `StatsDto.trendTags`. */
+  tagCounts: Record<string, number>;
+}
+
 export interface StatsDto {
   windowDays: number | null;
   /** Only set in "all time" mode: the oldest build's timestamp, i.e. what "since" actually resolved to. */
@@ -163,5 +176,8 @@ export interface StatsDto {
   uniqueFailingTests: number;
   topFailingTests: TopFailingTestDto[];
   failuresByJob: { jobName: string; count: number }[];
-  failuresOverTime: { date: string; count: number }[];
+  /** Zero-filled per day, but only from the oldest known build onward — not necessarily the full requested window. */
+  failuresOverTime: FailuresOverTimePointDto[];
+  /** Tags actually present among the counted failures, most-frequent first (capped). */
+  trendTags: TrendTagDto[];
 }
