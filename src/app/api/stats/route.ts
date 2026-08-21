@@ -13,7 +13,7 @@ interface FailureRow {
   testName: string;
   jobId: string;
   jobName: string;
-  buildTimestamp: string;
+  failedAt: string;
   ticketKey: string | null;
   ticketUrl: string | null;
   ticketJiraStatus: string | null;
@@ -32,6 +32,10 @@ const DAY_MS = 24 * 3600_000;
 // How many tag series the trend chart will plot at once — past this, extra
 // tags are dropped (by ascending frequency) to keep the chart legible.
 const MAX_TREND_TAGS = 12;
+// Reserved trend-tag id for failures whose test case has no tags at all —
+// kept separate from the real tag ids returned by the Tag table.
+const UNTAGGED_KEY = "__untagged__";
+const UNTAGGED_COLOR = "#64748b";
 
 export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId") ?? undefined;
@@ -83,7 +87,7 @@ export async function GET(req: NextRequest) {
          tc.testName,
          j.id AS jobId,
          j.name AS jobName,
-         b.timestamp AS buildTimestamp,
+         COALESCE(tf.failedAt, b.timestamp) AS failedAt,
          tk.key AS ticketKey,
          tk.url AS ticketUrl,
          tk.jiraStatus AS ticketJiraStatus,
@@ -94,8 +98,8 @@ export async function GET(req: NextRequest) {
        JOIN TestCase tc ON tc.id = tf.testCaseId
        JOIN Job j ON j.id = tc.jobId
        LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
-       WHERE b.timestamp >= ? AND b.invalid = 0 ${jobFilter}
-       ORDER BY b.timestamp ASC`
+       WHERE COALESCE(tf.failedAt, b.timestamp) >= ? AND b.invalid = 0 ${jobFilter}
+       ORDER BY failedAt ASC`
     )
     .all(...params) as unknown as FailureRow[];
 
@@ -142,13 +146,14 @@ export async function GET(req: NextRequest) {
   // date -> tagId -> count, for the per-tag trend lines.
   const byDayTag = new Map<string, Map<string, number>>();
   const tagsUsed = new Map<string, { id: string; name: string; color: string; total: number }>();
+  let untaggedTotal = 0;
 
   for (const f of failures) {
     const existing = byTestCase.get(f.testCaseId);
     if (existing) {
       existing.failureCount += 1;
-      if (f.buildTimestamp > existing.lastFailedAt) {
-        existing.lastFailedAt = f.buildTimestamp;
+      if (f.failedAt > existing.lastFailedAt) {
+        existing.lastFailedAt = f.failedAt;
       }
     } else {
       byTestCase.set(f.testCaseId, {
@@ -158,7 +163,7 @@ export async function GET(req: NextRequest) {
         jobId: f.jobId,
         jobName: f.jobName,
         failureCount: 1,
-        lastFailedAt: f.buildTimestamp,
+        lastFailedAt: f.failedAt,
         ticket: f.ticketKey
           ? {
               key: f.ticketKey,
@@ -174,19 +179,27 @@ export async function GET(req: NextRequest) {
 
     byJob.set(f.jobName, (byJob.get(f.jobName) ?? 0) + 1);
 
-    const day = f.buildTimestamp.slice(0, 10);
+    const day = f.failedAt.slice(0, 10);
     byDay.set(day, (byDay.get(day) ?? 0) + 1);
 
-    for (const tag of tagsByTestCase.get(f.testCaseId) ?? []) {
+    const failureTags = tagsByTestCase.get(f.testCaseId) ?? [];
+    if (failureTags.length === 0) {
+      untaggedTotal += 1;
       const dayMap = byDayTag.get(day) ?? new Map<string, number>();
-      dayMap.set(tag.id, (dayMap.get(tag.id) ?? 0) + 1);
+      dayMap.set(UNTAGGED_KEY, (dayMap.get(UNTAGGED_KEY) ?? 0) + 1);
       byDayTag.set(day, dayMap);
+    } else {
+      for (const tag of failureTags) {
+        const dayMap = byDayTag.get(day) ?? new Map<string, number>();
+        dayMap.set(tag.id, (dayMap.get(tag.id) ?? 0) + 1);
+        byDayTag.set(day, dayMap);
 
-      const used = tagsUsed.get(tag.id);
-      if (used) {
-        used.total += 1;
-      } else {
-        tagsUsed.set(tag.id, { id: tag.id, name: tag.name, color: tag.color, total: 1 });
+        const used = tagsUsed.get(tag.id);
+        if (used) {
+          used.total += 1;
+        } else {
+          tagsUsed.set(tag.id, { id: tag.id, name: tag.name, color: tag.color, total: 1 });
+        }
       }
     }
   }
@@ -209,10 +222,15 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.count - a.count);
   // The chart's own top tags, most-frequent first, capped so a job with
   // dozens of tags doesn't turn the trend chart into unreadable spaghetti.
+  // The "no tags" series (when any untagged failures exist) always gets a
+  // line too, on top of that cap, so untagged tests stay visible.
   const trendTags = [...tagsUsed.values()]
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
     .slice(0, MAX_TREND_TAGS)
     .map(({ id, name, color }) => ({ id, name, color }));
+  if (untaggedTotal > 0) {
+    trendTags.unshift({ id: UNTAGGED_KEY, name: "No tags", color: UNTAGGED_COLOR });
+  }
 
   // Zero-fill every calendar day in the (possibly clamped) chart window, not
   // just the ones that happen to have a failure — otherwise a sparse or

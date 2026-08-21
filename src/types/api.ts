@@ -117,6 +117,8 @@ export interface TestFailureDto {
   stdout: string | null;
   stderr: string | null;
   duration: number | null;
+  /** Approximate actual failure moment (build start + this test's duration), not the build's start time. */
+  failedAt: string;
   createdAt: string;
   build: BuildDto;
 }

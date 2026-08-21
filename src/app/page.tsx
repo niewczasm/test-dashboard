@@ -54,6 +54,10 @@ const LATEST_BUILDS_EXPANDED_KEY = "dashboard-latest-builds-expanded";
 const FAILURES_BY_JOB_EXPANDED_KEY = "dashboard-failures-by-job-expanded";
 const FAILURES_PER_DAY_EXPANDED_KEY = "dashboard-failures-per-day-expanded";
 const HIDE_RESOLVED_STORAGE_KEY = "dashboard-hide-resolved-tests";
+const TAG_FILTER_STORAGE_KEY = "dashboard-top-failing-tests-tag-filter";
+// Reserved filter-chip id for tests that have no tags at all.
+const UNTAGGED_FILTER_KEY = "__untagged__";
+const UNTAGGED_FILTER_COLOR = "#64748b";
 
 /** Ticket is closed and the test hasn't actually failed again since — a stale
  *  data point rather than a live problem, so it's worth setting apart from
@@ -127,6 +131,7 @@ export default function DashboardPage() {
   const [failuresByJobExpanded, setFailuresByJobExpanded] = useState(true);
   const [failuresPerDayExpanded, setFailuresPerDayExpanded] = useState(true);
   const [hideResolvedTests, setHideResolvedTests] = useState(false);
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   // Stays false until the localStorage read below resolves, so the very
   // first stats fetch already uses the persisted time window instead of
   // firing once with the default (30d) and again moments later with the
@@ -185,6 +190,11 @@ export default function DashboardPage() {
         if (rawFailuresPerDay !== null) setFailuresPerDayExpanded(rawFailuresPerDay === "true");
         const rawHideResolved = localStorage.getItem(HIDE_RESOLVED_STORAGE_KEY);
         if (rawHideResolved !== null) setHideResolvedTests(rawHideResolved === "true");
+        const rawTagFilter = localStorage.getItem(TAG_FILTER_STORAGE_KEY);
+        if (rawTagFilter) {
+          const parsed = JSON.parse(rawTagFilter);
+          if (Array.isArray(parsed)) setTagFilter(new Set(parsed));
+        }
       } catch {
         // ignore malformed/unavailable storage
       }
@@ -238,6 +248,31 @@ export default function DashboardPage() {
       setPage(1);
       return next;
     });
+  }
+
+  function toggleTagFilter(id: string) {
+    setTagFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore unavailable storage
+      }
+      return next;
+    });
+    setPage(1);
+  }
+
+  function clearTagFilter() {
+    setTagFilter(new Set());
+    try {
+      localStorage.setItem(TAG_FILTER_STORAGE_KEY, JSON.stringify([]));
+    } catch {
+      // ignore unavailable storage
+    }
+    setPage(1);
   }
 
   function expandBothCharts() {
@@ -332,7 +367,29 @@ export default function DashboardPage() {
 
   const allTests = stats?.topFailingTests ?? [];
   const resolvedCount = allTests.filter(isResolvedTest).length;
-  const visibleTests = hideResolvedTests ? allTests.filter((t) => !isResolvedTest(t)) : allTests;
+  const hideResolvedFilteredTests = hideResolvedTests
+    ? allTests.filter((t) => !isResolvedTest(t))
+    : allTests;
+
+  // Tag filter chips are built from every test in the window (not the
+  // already-filtered set), so selecting one tag doesn't make other tags
+  // disappear from the chip list.
+  const tagsInUse = new Map<string, { id: string; name: string; color: string }>();
+  let hasUntagged = false;
+  for (const t of allTests) {
+    if (t.tags.length === 0) hasUntagged = true;
+    for (const tag of t.tags) tagsInUse.set(tag.id, tag);
+  }
+  const tagsInUseList = [...tagsInUse.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  const visibleTests =
+    tagFilter.size === 0
+      ? hideResolvedFilteredTests
+      : hideResolvedFilteredTests.filter((t) => {
+          if (t.tags.length === 0) return tagFilter.has(UNTAGGED_FILTER_KEY);
+          return t.tags.some((tag) => tagFilter.has(tag.id));
+        });
+
   const sortedTests = [...visibleTests].sort((a, b) => {
     const av = sortValue(a, jenkinsPathByJobId.get(a.jobId) ?? "", sortColumn);
     const bv = sortValue(b, jenkinsPathByJobId.get(b.jobId) ?? "", sortColumn);
@@ -634,6 +691,42 @@ export default function DashboardPage() {
           </label>
           </div>
         </div>
+        {(tagsInUseList.length > 0 || hasUntagged) && (
+          <div
+            className="flex flex-wrap items-center gap-1.5 border-b px-4 py-2"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Filter by tag:
+            </span>
+            {tagsInUseList.map((tag) => (
+              <TagFilterPill
+                key={tag.id}
+                label={tag.name}
+                color={tag.color}
+                active={tagFilter.has(tag.id)}
+                onClick={() => toggleTagFilter(tag.id)}
+              />
+            ))}
+            {hasUntagged && (
+              <TagFilterPill
+                label="No tags"
+                color={UNTAGGED_FILTER_COLOR}
+                active={tagFilter.has(UNTAGGED_FILTER_KEY)}
+                onClick={() => toggleTagFilter(UNTAGGED_FILTER_KEY)}
+              />
+            )}
+            {tagFilter.size > 0 && (
+              <button
+                onClick={clearTagFilter}
+                className="text-xs underline"
+                style={{ color: "var(--series-1)" }}
+              >
+                clear
+              </button>
+            )}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table
             className="text-sm"
@@ -840,5 +933,31 @@ export default function DashboardPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function TagFilterPill({
+  label,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{
+        background: active ? `${color}33` : "transparent",
+        color: active ? color : "var(--text-muted)",
+        border: `1px solid ${active ? `${color}80` : "var(--gridline)"}`,
+      }}
+    >
+      {label}
+    </button>
   );
 }

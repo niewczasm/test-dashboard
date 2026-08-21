@@ -307,8 +307,12 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                       </span>
                     )}
                   </div>
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    {format(new Date(f.build.timestamp), "d MMM yyyy, HH:mm")}
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--text-muted)" }}
+                    title={`Build started ${format(new Date(f.build.timestamp), "d MMM yyyy, HH:mm")}`}
+                  >
+                    {format(new Date(f.failedAt), "d MMM yyyy, HH:mm")}
                   </span>
                 </button>
                 {f.errorMessage && !expanded && (

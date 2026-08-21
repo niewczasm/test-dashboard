@@ -99,7 +99,7 @@ export function FailuresTrendChart({
             labelStyle={{ color: "var(--text-secondary)" }}
           />
           <Area
-            type="monotone"
+            type="linear"
             dataKey="total"
             stroke="var(--series-1)"
             strokeWidth={2}
@@ -112,7 +112,7 @@ export function FailuresTrendChart({
           {tags.map((tag) => (
             <Line
               key={tag.id}
-              type="monotone"
+              type="linear"
               dataKey={(point: FailuresOverTimePointDto) => point.tagCounts[tag.id] ?? 0}
               stroke={tag.color}
               strokeWidth={2}

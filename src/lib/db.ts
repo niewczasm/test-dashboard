@@ -159,6 +159,31 @@ ensureColumn("Ticket", "jiraStatusCategory", "TEXT");
 ensureColumn("Ticket", "jiraResolvedAt", "TEXT");
 ensureColumn("Ticket", "jiraCheckedAt", "TEXT");
 ensureColumn("Ticket", "jiraError", "TEXT");
+ensureColumn("TestFailure", "failedAt", "TEXT");
+
+/**
+ * `failedAt` approximates the actual moment a test failed — the build's
+ * start time plus that test's own duration — rather than the build's start
+ * time, which can be misleading for long-running builds. New rows get this
+ * at insert time (see sync.ts); this backfills rows written before the
+ * column existed. Only touches NULL rows, so it's a no-op after the first
+ * run.
+ */
+const pendingFailedAtBackfill = db
+  .prepare(
+    `SELECT tf.id, tf.duration, b.timestamp AS buildTimestamp
+     FROM TestFailure tf
+     JOIN Build b ON b.id = tf.buildId
+     WHERE tf.failedAt IS NULL`
+  )
+  .all() as { id: string; duration: number | null; buildTimestamp: string }[];
+if (pendingFailedAtBackfill.length > 0) {
+  const updateFailedAt = db.prepare("UPDATE TestFailure SET failedAt = ? WHERE id = ?");
+  for (const row of pendingFailedAtBackfill) {
+    const ms = new Date(row.buildTimestamp).getTime() + (row.duration ? row.duration * 1000 : 0);
+    updateFailedAt.run(new Date(ms).toISOString(), row.id);
+  }
+}
 
 /** The subset of SQLite bind-parameter types this app actually uses. */
 export type SqlParam = string | number | null;

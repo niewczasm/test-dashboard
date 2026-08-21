@@ -71,8 +71,8 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
     RETURNING id
   `);
   const insertFailure = db.prepare(`
-    INSERT INTO TestFailure (id, testCaseId, buildId, status, errorMessage, stackTrace, stdout, stderr, duration, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO TestFailure (id, testCaseId, buildId, status, errorMessage, stackTrace, stdout, stderr, duration, failedAt, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (testCaseId, buildId) DO NOTHING
   `);
 
@@ -109,6 +109,14 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
           nowIso()
         ) as { id: string };
 
+        // Jenkins only reports the build's start time and each test's own
+        // duration, not a per-test timestamp — approximate the actual
+        // failure moment as start + duration rather than using the (often
+        // much earlier) build start time for every test in the suite.
+        const failedAt = new Date(
+          build.timestamp + (failure.duration ? failure.duration * 1000 : 0)
+        ).toISOString();
+
         insertFailure.run(
           newId(),
           testCaseRow.id,
@@ -119,6 +127,7 @@ export async function syncJob(jobId: string): Promise<JobSyncResult> {
           failure.stdout,
           failure.stderr,
           failure.duration,
+          failedAt,
           nowIso()
         );
         result.newFailures += 1;

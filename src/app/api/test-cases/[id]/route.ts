@@ -38,6 +38,7 @@ interface FailureRow {
   stdout: string | null;
   stderr: string | null;
   duration: number | null;
+  failedAt: string;
   createdAt: string;
   buildId: string;
   buildNumber: number;
@@ -85,19 +86,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .prepare(
       `SELECT
          tf.id, tf.status, tf.errorMessage, tf.stackTrace, tf.stdout, tf.stderr, tf.duration, tf.createdAt,
+         COALESCE(tf.failedAt, b.timestamp) AS failedAt,
          b.id AS buildId, b.number AS buildNumber, b.result AS buildResult,
          b.timestamp AS buildTimestamp, b.url AS buildUrl,
          b.invalid AS buildInvalid, b.invalidReason AS buildInvalidReason
        FROM TestFailure tf
        JOIN Build b ON b.id = tf.buildId
        WHERE tf.testCaseId = ?
-       ORDER BY b.timestamp DESC`
+       ORDER BY failedAt DESC`
     )
     .all(id) as unknown as FailureRow[];
 
   // `failures` is already ordered newest-first; invalidated builds don't
   // count as "still failing" (same rule the dashboard stats use).
-  const lastValidFailureAt = failures.find((f) => !toBool(f.buildInvalid))?.buildTimestamp ?? null;
+  const lastValidFailureAt = failures.find((f) => !toBool(f.buildInvalid))?.failedAt ?? null;
   const ticketRegressedAfterFix = Boolean(
     row.ticketJiraStatusCategory === "done" &&
       row.ticketJiraResolvedAt &&
@@ -139,6 +141,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       stdout: f.stdout,
       stderr: f.stderr,
       duration: f.duration,
+      failedAt: f.failedAt,
       createdAt: f.createdAt,
       build: {
         id: f.buildId,
