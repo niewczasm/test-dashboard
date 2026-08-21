@@ -21,6 +21,8 @@ interface TestCaseDetailRow {
   ticketJiraResolvedAt: string | null;
   ticketJiraCheckedAt: string | null;
   ticketJiraError: string | null;
+  ticketJiraSummary: string | null;
+  ticketJiraAssignee: string | null;
 }
 
 interface TagRow {
@@ -61,7 +63,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          tk.createdAt AS ticketCreatedAt, tk.updatedAt AS ticketUpdatedAt,
          tk.jiraStatus AS ticketJiraStatus, tk.jiraStatusCategory AS ticketJiraStatusCategory,
          tk.jiraResolvedAt AS ticketJiraResolvedAt,
-         tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError
+         tk.jiraCheckedAt AS ticketJiraCheckedAt, tk.jiraError AS ticketJiraError,
+         tk.jiraSummary AS ticketJiraSummary, tk.jiraAssignee AS ticketJiraAssignee
        FROM TestCase tc
        JOIN Job j ON j.id = tc.jobId
        LEFT JOIN Ticket tk ON tk.testCaseId = tc.id
@@ -129,6 +132,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           jiraResolvedAt: row.ticketJiraResolvedAt,
           jiraCheckedAt: row.ticketJiraCheckedAt,
           jiraError: row.ticketJiraError,
+          jiraSummary: row.ticketJiraSummary,
+          jiraAssignee: row.ticketJiraAssignee,
         }
       : null,
     ticketRegressedAfterFix,

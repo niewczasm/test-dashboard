@@ -159,6 +159,8 @@ ensureColumn("Ticket", "jiraStatusCategory", "TEXT");
 ensureColumn("Ticket", "jiraResolvedAt", "TEXT");
 ensureColumn("Ticket", "jiraCheckedAt", "TEXT");
 ensureColumn("Ticket", "jiraError", "TEXT");
+ensureColumn("Ticket", "jiraSummary", "TEXT");
+ensureColumn("Ticket", "jiraAssignee", "TEXT");
 ensureColumn("TestFailure", "failedAt", "TEXT");
 
 /**

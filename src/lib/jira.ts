@@ -25,6 +25,10 @@ export interface JiraIssueStatus {
   statusCategory: string;
   /** ISO timestamp the issue was resolved, or null if it never was (or isn't anymore). */
   resolvedAt: string | null;
+  /** Issue title, or null if JIRA didn't return one. */
+  summary: string | null;
+  /** Assignee's display name, or null if unassigned. */
+  assignee: string | null;
 }
 
 interface JiraIssueResponse {
@@ -34,6 +38,8 @@ interface JiraIssueResponse {
       statusCategory?: { key?: string };
     };
     resolutiondate?: string | null;
+    summary?: string | null;
+    assignee?: { displayName?: string | null } | null;
   };
 }
 
@@ -42,7 +48,7 @@ export async function fetchIssueStatus(key: string): Promise<JiraIssueStatus> {
     throw new Error("JIRA_URL is not configured (see .env)");
   }
   const res = await fetch(
-    `${JIRA_URL}/rest/api/2/issue/${encodeURIComponent(key)}?fields=status,resolutiondate`,
+    `${JIRA_URL}/rest/api/2/issue/${encodeURIComponent(key)}?fields=status,resolutiondate,summary,assignee`,
     { headers: { ...authHeader(), Accept: "application/json" }, cache: "no-store" }
   );
   if (!res.ok) {
@@ -56,5 +62,7 @@ export async function fetchIssueStatus(key: string): Promise<JiraIssueStatus> {
   }
   const rawResolvedAt = data.fields?.resolutiondate;
   const resolvedAt = rawResolvedAt ? new Date(rawResolvedAt).toISOString() : null;
-  return { status, statusCategory, resolvedAt };
+  const summary = data.fields?.summary ?? null;
+  const assignee = data.fields?.assignee?.displayName ?? null;
+  return { status, statusCategory, resolvedAt, summary, assignee };
 }

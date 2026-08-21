@@ -57,6 +57,8 @@ export interface TicketDto {
   jiraResolvedAt: string | null;
   jiraCheckedAt: string | null;
   jiraError: string | null;
+  jiraSummary: string | null;
+  jiraAssignee: string | null;
 }
 
 export interface TestCaseListDto {

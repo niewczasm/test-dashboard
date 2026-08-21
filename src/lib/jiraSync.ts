@@ -15,11 +15,13 @@ export async function syncTicketStatus(ticketId: string): Promise<void> {
   if (!ticket) return;
 
   try {
-    const { status, statusCategory, resolvedAt } = await fetchIssueStatus(ticket.key);
+    const { status, statusCategory, resolvedAt, summary, assignee } = await fetchIssueStatus(
+      ticket.key
+    );
     db.prepare(
       `UPDATE Ticket SET jiraStatus = ?, jiraStatusCategory = ?, jiraResolvedAt = ?,
-         jiraCheckedAt = ?, jiraError = NULL WHERE id = ?`
-    ).run(status, statusCategory, resolvedAt, nowIso(), ticket.id);
+         jiraSummary = ?, jiraAssignee = ?, jiraCheckedAt = ?, jiraError = NULL WHERE id = ?`
+    ).run(status, statusCategory, resolvedAt, summary, assignee, nowIso(), ticket.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     db.prepare("UPDATE Ticket SET jiraCheckedAt = ?, jiraError = ? WHERE id = ?").run(

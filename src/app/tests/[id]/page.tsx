@@ -147,6 +147,19 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
           {testCase.ticket && (
             <div className="mb-3 flex flex-col gap-1 rounded-md border p-2 text-xs" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center gap-2">
+                {testCase.ticket.url ? (
+                  <a
+                    href={testCase.ticket.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold underline"
+                    style={{ color: "var(--series-1)" }}
+                  >
+                    {testCase.ticket.key}
+                  </a>
+                ) : (
+                  <span className="font-semibold">{testCase.ticket.key}</span>
+                )}
                 {testCase.ticketRegressedAfterFix && (
                   <span title="This test failed again after the ticket was resolved">⚠️</span>
                 )}
@@ -177,6 +190,14 @@ export default function TestCaseDetailPage({ params }: { params: Promise<{ id: s
                   {refreshingStatus ? "checking…" : "refresh"}
                 </button>
               </div>
+              {testCase.ticket.jiraSummary && (
+                <span style={{ color: "var(--text-primary)" }}>{testCase.ticket.jiraSummary}</span>
+              )}
+              {testCase.ticket.jiraStatus && (
+                <span style={{ color: "var(--text-muted)" }}>
+                  assigned to {testCase.ticket.jiraAssignee ?? "nobody"}
+                </span>
+              )}
               {testCase.ticket.jiraResolvedAt && (
                 <span style={{ color: "var(--text-muted)" }}>
                   resolved{" "}
