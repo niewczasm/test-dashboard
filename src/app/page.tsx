@@ -132,6 +132,7 @@ export default function DashboardPage() {
   const [failuresPerDayExpanded, setFailuresPerDayExpanded] = useState(true);
   const [hideResolvedTests, setHideResolvedTests] = useState(false);
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+  const [testSearch, setTestSearch] = useState("");
   // Stays false until the localStorage read below resolves, so the very
   // first stats fetch already uses the persisted time window instead of
   // firing once with the default (30d) and again moments later with the
@@ -382,13 +383,22 @@ export default function DashboardPage() {
   }
   const tagsInUseList = [...tagsInUse.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-  const visibleTests =
+  const tagFilteredTests =
     tagFilter.size === 0
       ? hideResolvedFilteredTests
       : hideResolvedFilteredTests.filter((t) => {
           if (t.tags.length === 0) return tagFilter.has(UNTAGGED_FILTER_KEY);
           return t.tags.some((tag) => tagFilter.has(tag.id));
         });
+
+  const searchQuery = testSearch.trim().toLowerCase();
+  const visibleTests = searchQuery
+    ? tagFilteredTests.filter(
+        (t) =>
+          t.testName.toLowerCase().includes(searchQuery) ||
+          t.className.toLowerCase().includes(searchQuery)
+      )
+    : tagFilteredTests;
 
   const sortedTests = [...visibleTests].sort((a, b) => {
     const av = sortValue(a, jenkinsPathByJobId.get(a.jobId) ?? "", sortColumn);
@@ -661,6 +671,16 @@ export default function DashboardPage() {
             Most frequently failing tests
           </h2>
           <div className="flex flex-wrap items-center gap-3">
+            <input
+              value={testSearch}
+              onChange={(e) => {
+                setTestSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by test name…"
+              className="rounded border px-2 py-1 text-xs"
+              style={{ borderColor: "var(--border)", background: "var(--surface-1)", width: 200 }}
+            />
             {resolvedCount > 0 && (
               <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
                 <input
