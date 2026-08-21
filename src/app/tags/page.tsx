@@ -20,6 +20,12 @@ export default function TagsPage() {
   const [color, setColor] = useState(DEFAULT_COLORS[0]);
   const [error, setError] = useState<string | null>(null);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState(DEFAULT_COLORS[0]);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   function load() {
     fetch("/api/tags")
       .then((r) => r.json())
@@ -49,6 +55,41 @@ export default function TagsPage() {
     if (!confirm("Delete this tag? It will be removed from all tests.")) return;
     await fetch(`/api/tags/${id}`, { method: "DELETE" });
     load();
+  }
+
+  function startEdit(tag: TagDto) {
+    setEditingId(tag.id);
+    setEditName(tag.name);
+    setEditColor(tag.color);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setEditError(null);
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/tags/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, color: editColor }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setEditError(typeof data.error === "string" ? data.error : "Failed to save tag");
+        return;
+      }
+      setEditingId(null);
+      load();
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   return (
@@ -104,15 +145,79 @@ export default function TagsPage() {
         )}
       </form>
 
-      <div className="card flex flex-wrap gap-2 p-4">
-        {tags.map((tag) => (
-          <div key={tag.id} className="flex items-center gap-1">
-            <TagBadge name={tag.name} color={tag.color} onRemove={() => removeTag(tag.id)} />
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              ({tag._count?.testCases ?? 0})
-            </span>
-          </div>
-        ))}
+      <div className="card flex flex-wrap items-start gap-3 p-4">
+        {tags.map((tag) =>
+          editingId === tag.id ? (
+            <form
+              key={tag.id}
+              onSubmit={saveEdit}
+              className="flex flex-col gap-2 rounded-md border p-2"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <input
+                required
+                autoFocus
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="rounded-md border px-2 py-1 text-sm"
+                style={{ borderColor: "var(--border)", background: "var(--surface-1)" }}
+              />
+              <div className="flex gap-1">
+                {DEFAULT_COLORS.map((c) => (
+                  <button
+                    type="button"
+                    key={c}
+                    onClick={() => setEditColor(c)}
+                    className="h-6 w-6 rounded-full"
+                    style={{
+                      background: c,
+                      outline: editColor === c ? "2px solid var(--text-primary)" : "none",
+                      outlineOffset: 2,
+                    }}
+                    aria-label={c}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={savingEdit || !editName.trim()}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
+                  style={{ background: "var(--series-1)" }}
+                >
+                  {savingEdit ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="text-xs"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {editError && (
+                <span className="text-xs" style={{ color: "var(--status-critical)" }}>
+                  {editError}
+                </span>
+              )}
+            </form>
+          ) : (
+            <div key={tag.id} className="flex items-center gap-1">
+              <TagBadge name={tag.name} color={tag.color} onRemove={() => removeTag(tag.id)} />
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                ({tag._count?.testCases ?? 0})
+              </span>
+              <button
+                onClick={() => startEdit(tag)}
+                className="text-xs underline"
+                style={{ color: "var(--series-1)" }}
+              >
+                edit
+              </button>
+            </div>
+          )
+        )}
         {tags.length === 0 && (
           <span className="text-sm" style={{ color: "var(--text-muted)" }}>
             No tags yet. Add your first one above.
